@@ -32,6 +32,7 @@ const NotebookInterface = () => {
   ]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [selectedSourceId, setSelectedSourceId] = useState(null);
+  const [searchText, setSearchText] = useState("");
 
   const toggleSidebar = () => {
     setIsSidebarOpen(!isSidebarOpen);
@@ -39,6 +40,30 @@ const NotebookInterface = () => {
 
   const selectSource = (sourceId) => {
     setSelectedSourceId(sourceId === selectedSourceId ? null : sourceId);
+  };
+
+
+  const handleSearch = async (e) => {
+    e.preventDefault();
+
+    try {
+      const response = await fetch("http://127.0.0.1:5000/summarize", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ query: searchText }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch results. Please try again.");
+      }
+
+      const data = await response.json();
+      setResultText(data.result || "No results found."); // Assuming API returns `result` field
+    } catch (error) {
+      setResultText(`Error: ${error.message}`);
+    }
   };
 
   return (
@@ -153,10 +178,12 @@ const NotebookInterface = () => {
             <div className="relative">
               <input
                 type="text"
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
                 placeholder="Start typing..."
                 className="w-full bg-zinc-800 rounded-lg pl-4 pr-12 py-3 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
-              <button className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-md bg-blue-500 hover:bg-blue-600">
+              <button onClick={handleSearch} className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-md bg-blue-500 hover:bg-blue-600">
                 <svg
                   className="w-4 h-4 rotate-90"
                   fill="none"
