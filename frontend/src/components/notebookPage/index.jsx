@@ -33,6 +33,7 @@ const NotebookInterface = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [selectedSourceId, setSelectedSourceId] = useState(null);
   const [searchText, setSearchText] = useState("");
+  const [searchResult, setResultText] = useState("")
 
   const toggleSidebar = () => {
     setIsSidebarOpen(!isSidebarOpen);
@@ -45,26 +46,44 @@ const NotebookInterface = () => {
 
   const handleSearch = async (e) => {
     e.preventDefault();
-
+  
+    // Find the selected source file
+    const selectedSource = sources.find((source) => source.id === selectedSourceId);
+  
+    if (!selectedSource) {
+      alert("Please select a source to summarize.");
+      return;
+    }
+  
     try {
+      // Create a FormData object to send the file
+      const formData = new FormData();
+      // This filePath needs to be updated with the selected files, file path can be retrieved from S3 in the backend
+      const filePath = `https://s3.us-west-2.amazonaws.com/chatbotcloud.com/An+Optimal+Control+View+of+Adversarial+Machine+Learning.pdf`; // Adjust file path as needed
+  
+      // Append the file to the FormData object
+      const fileBlob = await fetch(filePath).then((res) => res.blob());
+      formData.append("file", fileBlob, selectedSource.name);
+  
+      // Make the POST request to the API
       const response = await fetch("http://127.0.0.1:5000/summarize", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ query: searchText }),
+        body: formData,
       });
-
+  
       if (!response.ok) {
         throw new Error("Failed to fetch results. Please try again.");
       }
-
+  
       const data = await response.json();
-      setResultText(data.result || "No results found."); // Assuming API returns `result` field
+      alert("Summary fetched successfully!");
+      setSearchText("");
+      setResultText(data.summary || "No summary available.");
     } catch (error) {
-      setResultText(`Error: ${error.message}`);
+      alert(`Error: ${error.message}`);
     }
   };
+  
 
   return (
     <div className="flex h-screen bg-zinc-900 text-gray-300">
@@ -168,7 +187,10 @@ const NotebookInterface = () => {
           <div className="relative text-zinc-500">
             {sources.length == 0
               ? "Add source to search"
+              : searchResult.length > 0 
+              ? <div>{searchResult}</div> 
               : "Add prompt to search through the selected source"}
+
           </div>
         </div>
 

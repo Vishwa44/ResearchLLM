@@ -28,12 +28,28 @@ const SearchingComponent = () => {
   const [searchText, setSearchText] = useState("");
   const [resultText, setResultText] = useState("Your summarized text will appear here...");
 
-  const handleSearch = (e) => {
+  const handleSearch = async (e) => {
     e.preventDefault();
-    setResultText(`Searching for: "${searchText}" (placeholder text for result)`);
+
+    try {
+      const response = await fetch("http://127.0.0.1:5000/query", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ query: searchText }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch results. Please try again.");
+      }
+
+      const data = await response.json();
+      setResultText(data.result || "No results found."); 
+    } catch (error) {
+      setResultText(`Error: ${error.message}`);
+    }
   };
-
-
 
 
   return (
