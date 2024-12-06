@@ -2,6 +2,7 @@ import os
 import re
 import boto3
 from pypdf import PdfReader
+import json
 
 # Load configuration from environment variables or a config file
 AWS_ACCESS_KEY_ID = "AKIA6ODU6VDB2NXG2KVA"
@@ -11,7 +12,7 @@ AWS_STORAGE_BUCKET_NAME = "research-llm-pdfs"
 MEDIA_ROOT = "/tmp"  # Temporary storage for processing files
 
 # Global counter for paperID
-paper_id_counter = 1
+paper_id_counter = 2671
 
 # Dictionary to store the cleaned_filename as key and [S3 link, paperID] as value
 filename_metadata = {}
@@ -20,7 +21,7 @@ def s3_upload(file):
     """
     Uploads a file to S3 and returns the public URL.
     """
-    if 1==0:
+    if file:
         try:
             file_path = os.path.join(MEDIA_ROOT, file.name)
             with open(file_path, "wb") as f:
@@ -34,11 +35,11 @@ def s3_upload(file):
             )
             
             s3.Bucket(AWS_STORAGE_BUCKET_NAME).upload_file(
-                file_path,
-                "infer-soft/" + file.name,
+                file.name,
+                file.name.split("/")[-1],
             )
             
-            file_url = f"https://{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com/infer-soft/{file.name}"
+            file_url = f"https://{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com/{file.name.split("/")[-1]}"
             os.remove(file_path)
 
             return file_url
@@ -61,7 +62,7 @@ def save_text_to_file(text, output_path):
         file.write(text)
 
 def process_pdfs_in_folder(folder_path):
-    paper_id_counter=1
+    paper_id_counter=2671
     output_path = '/Users/shreyasnyu/Documents/projects/cloud/parsed'
     os.makedirs(output_path, exist_ok=True)
     
@@ -77,7 +78,7 @@ def process_pdfs_in_folder(folder_path):
                 # Use the s3_upload function to upload the file and get the S3 URL
                 with open(pdf_path, 'rb') as file:
                     # file.name = filename  # Simulate a file object with a name attribute
-                    s3_url = s3_upload(file) + "something"
+                    s3_url = s3_upload(file)
 
                 if s3_url:
                     # Store the metadata
@@ -89,14 +90,19 @@ def process_pdfs_in_folder(folder_path):
                 save_text_to_file(parsed_text, output_text_file)
                 print(f"Parsed text has been saved to {output_text_file}")
                 print(f"Metadata for {cleaned_filename}: {filename_metadata[cleaned_filename]}")
-                break
             except Exception as e:
                 print(f"Error processing {filename}: {e}")
 
 # Usage
-folder_path = '/Users/shreyasnyu/Documents/projects/cloud/datasets2'
+folder_path = '/Users/shreyasnyu/Documents/projects/cloud/dataset'
 if os.path.exists(folder_path):
     process_pdfs_in_folder(folder_path)
-    print("Final Metadata Dictionary:", filename_metadata)
+    metadata_file_path = "/Users/shreyasnyu/Documents/projects/cloud/pdf_metadata2.json"  # Adjust the file name/path as needed
+    try:
+        with open(metadata_file_path, "w") as metadata_file:
+            json.dump(filename_metadata, metadata_file, indent=4)  # Save with indentation for readability
+        print(f"PDF metadata has been saved to {metadata_file_path}")
+    except Exception as e:
+        print(f"Error saving PDF metadata to file: {e}")
 else:
     print(f"The folder path '{folder_path}' does not exist.")
