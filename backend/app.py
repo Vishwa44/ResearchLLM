@@ -278,7 +278,6 @@ def addToDynamo():
             }
             # Add the item to the table
             table.put_item(Item=data_to_add)
-            break
 
         # Return success response
         return jsonify({"message": "All items added successfully!"}), 200
