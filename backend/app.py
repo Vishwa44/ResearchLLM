@@ -12,6 +12,8 @@ from flask_cors import CORS
 from pypdf import PdfReader
 import os
 import re
+import requests
+import json
 
 # Ensure fallback for unsupported operations on MPS
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
@@ -28,27 +30,8 @@ app = Flask(__name__)
 CORS(app)
 
 # Load SentenceTransformer for embeddings
-embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
-# embedding_model = SentenceTransformer('jinaai/jina-embeddings-v2-small-en', trust_remote_code=True).cuda()  # Lightweight model for sentence embeddings
-
-# Load LLaMA model
-hf_token = ""
-llama_model_name = "meta-llama/Llama-2-7b-chat-hf"
-
-device = "cuda" if torch.cuda.is_available() else "cpu"
-
-llama_tokenizer = AutoTokenizer.from_pretrained(llama_model_name, use_auth_token=hf_token)
-llama_model = AutoModelForCausalLM.from_pretrained(
-    llama_model_name,
-    device_map="auto" if torch.cuda.is_available() else None,
-    torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-    use_auth_token=hf_token
-)
-
-# Add padding token if necessary
-if llama_tokenizer.pad_token is None:
-    llama_tokenizer.add_special_tokens({'pad_token': '[PAD]'})
-    llama_model.resize_token_embeddings(len(llama_tokenizer))
+# embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+embedding_model = SentenceTransformer('jinaai/jina-embeddings-v2-small-en', trust_remote_code=True).cuda()  # Lightweight model for sentence embeddings
 
 
 # Load the summarizer model
@@ -147,21 +130,21 @@ def generate_answer(query, matches):
     context = " ".join(
         [match.get("metadata", {}).get("chunk", "") for match in matches if "metadata" in match]
     )
-    input_text = f"Query: {query}\nContext: {context}\nAnswer:"
-    
-    inputs = llama_tokenizer(
-        input_text,
-        return_tensors="pt",
-        padding=True,
-        truncation=True
-    ).to(device)
-    
-    outputs = llama_model.generate(
-        inputs.input_ids,
-        max_length=300,
-        pad_token_id=llama_tokenizer.pad_token_id
-    )
-    return llama_tokenizer.decode(outputs[0], skip_special_tokens=True)
+    input_text = f"Query: {query}\nContext: {context}\n\nBased on the Context please answer the Query\n"
+    token  = "eyJhbGciOiJSUzI1NiIsImtpZCI6IjJjOGEyMGFmN2ZjOThmOTdmNDRiMTQyYjRkNWQwODg0ZWIwOTM3YzQiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJhY2NvdW50cy5nb29nbGUuY29tIiwiYXpwIjoiNjE4MTA0NzA4MDU0LTlyOXMxYzRhbGczNmVybGl1Y2hvOXQ1Mm4zMm42ZGdxLmFwcHMuZ29vZ2xldXNlcmNvbnRlbnQuY29tIiwiYXVkIjoiNjE4MTA0NzA4MDU0LTlyOXMxYzRhbGczNmVybGl1Y2hvOXQ1Mm4zMm42ZGdxLmFwcHMuZ29vZ2xldXNlcmNvbnRlbnQuY29tIiwic3ViIjoiMTEwNjE4MjQ3NDgxMzA0MTY2OTAwIiwiaGQiOiJueXUuZWR1IiwiZW1haWwiOiJ2ZzI1MjNAbnl1LmVkdSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJhdF9oYXNoIjoidnBMNWdCQmNKbElrUnlGZWJWTEVMUSIsIm5iZiI6MTczMzYwNTIyNiwiaWF0IjoxNzMzNjA1NTI2LCJleHAiOjE3MzM2MDkxMjYsImp0aSI6IjEzM2U1MDgzMzY1N2Q3MjU5MjM4NmI0MDNiMDdlNmEwNjMyNjAwODAifQ.x1BXnZvB7vmt5Cpf7HqoSNblmANZy2DSGlqiD5_VwDJsMK9LO0bKeP734au_7XSBIAY9W72Bb4J4M23MYEhoUGavr48CaQvIwUdBqSo4DIWmQ0BFA5YfQi-3ooGHcxATyFDi3rf5O-XGQ-nstP_CCRtPN7ZWrp9htwHH7uU4dG8dRqMLHE-RcV3mvwTVBD5M3EdoCvwy7msVDWW9mB_bN1gPYbxr61fNhNqSoabCwj-3-uFAEG8V-UwZNCMlhOpVLslbwZ5frUcKbx9mzeGT5wte0Owe5hX_JKpQ8b2Y2zLNMWBVr1QgvWwwyIgKn3P29CatQP-9JNe7EdmiRD4KVA"
+    llama_url = "https://ollama-llama32-316797979759.us-east4.run.app/api/generate"
+
+    headers = {
+    "Authorization": "Bearer "+ token, 
+    "Content-Type": "application/json"}
+    data = {
+        "model": "llama3.2:3b",
+        "prompt": input_text,
+        "stream": False}
+    print("generating answer")
+    response = requests.post(llama_url, json=data, headers=headers)
+    print("generation done")
+    return response
 
 @app.route('/')
 def home():
@@ -175,18 +158,20 @@ def favicon():
 def query():
     try:
         data = request.json
+        print(data)
         query_text = data['query']
         
         pinecone_results = query_pinecone(query_text)
         matches = pinecone_results.get("matches", [])
-        
+        print("fetched context")
         if not matches:
             return jsonify({"answer": "No relevant matches found in the database."})
         
-        # answer = generate_answer(query_text, matches)
-        answer = "THIS IS MY ANSWER"
-        return jsonify({"result": str(matches)})
+        answer = generate_answer(query_text, matches)
+        
+        return jsonify({"result": answer.text})
     except Exception as e:
+        print("exception raised")
         error_trace = traceback.format_exc()
         print(f"Error: {error_trace}")
         return jsonify({"error": str(e), "trace": error_trace}), 500
