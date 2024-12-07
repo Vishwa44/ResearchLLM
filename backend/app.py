@@ -14,6 +14,7 @@ from flask_cors import CORS
 from pypdf import PdfReader
 import os
 import re
+import json
 import boto3
 import requests
 
@@ -45,28 +46,9 @@ index = pc.Index(index_name)
 app = Flask(__name__)
 CORS(app)
 
-# # Load SentenceTransformer for embeddings
+# Load SentenceTransformer for embeddings
 embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
 # embedding_model = SentenceTransformer('jinaai/jina-embeddings-v2-small-en', trust_remote_code=True).cuda()  # Lightweight model for sentence embeddings
-
-# Load LLaMA model
-hf_token = "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"
-llama_model_name = "meta-llama/Llama-2-7b-chat-hf"
-
-device = "cuda" if torch.cuda.is_available() else "cpu"
-
-llama_tokenizer = AutoTokenizer.from_pretrained(llama_model_name, use_auth_token=hf_token)
-llama_model = AutoModelForCausalLM.from_pretrained(
-    llama_model_name,
-    device_map="auto" if torch.cuda.is_available() else None,
-    torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-    use_auth_token=hf_token
-)
-
-# Add padding token if necessary
-if llama_tokenizer.pad_token is None:
-    llama_tokenizer.add_special_tokens({'pad_token': '[PAD]'})
-    llama_model.resize_token_embeddings(len(llama_tokenizer))
 
 
 # Load the summarizer model
@@ -165,21 +147,21 @@ def generate_answer(query, matches):
     context = " ".join(
         [match.get("metadata", {}).get("chunk", "") for match in matches if "metadata" in match]
     )
-    input_text = f"Query: {query}\nContext: {context}\nAnswer:"
-    
-    inputs = llama_tokenizer(
-        input_text,
-        return_tensors="pt",
-        padding=True,
-        truncation=True
-    ).to(device)
-    
-    outputs = llama_model.generate(
-        inputs.input_ids,
-        max_length=300,
-        pad_token_id=llama_tokenizer.pad_token_id
-    )
-    return llama_tokenizer.decode(outputs[0], skip_special_tokens=True)
+    input_text = f"Query: {query}\nContext: {context}\n\nBased on the Context please answer the Query\n"
+    token  = "eyJhbGciOiJSUzI1NiIsImtpZCI6IjJjOGEyMGFmN2ZjOThmOTdmNDRiMTQyYjRkNWQwODg0ZWIwOTM3YzQiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJhY2NvdW50cy5nb29nbGUuY29tIiwiYXpwIjoiNjE4MTA0NzA4MDU0LTlyOXMxYzRhbGczNmVybGl1Y2hvOXQ1Mm4zMm42ZGdxLmFwcHMuZ29vZ2xldXNlcmNvbnRlbnQuY29tIiwiYXVkIjoiNjE4MTA0NzA4MDU0LTlyOXMxYzRhbGczNmVybGl1Y2hvOXQ1Mm4zMm42ZGdxLmFwcHMuZ29vZ2xldXNlcmNvbnRlbnQuY29tIiwic3ViIjoiMTEwNjE4MjQ3NDgxMzA0MTY2OTAwIiwiaGQiOiJueXUuZWR1IiwiZW1haWwiOiJ2ZzI1MjNAbnl1LmVkdSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJhdF9oYXNoIjoib1FBTWNscDNmNktPZG5peWFXenN4dyIsIm5iZiI6MTczMzYwODc2NiwiaWF0IjoxNzMzNjA5MDY2LCJleHAiOjE3MzM2MTI2NjYsImp0aSI6ImI5NjcxODRmNWM4YWU0YjAwN2VmMjNmZDQwMjUwNjJjYWQzNmYxMDkifQ.D4lhfC52HkceZrnoXl2sOXmUhwYg-nAbtsV8Ray05xnQwu_d1fiygY9IfrmMNpIjaUs_LwEHXjTh6EuJX1y_OZyCDP8LV3xtGVeVYaIqAhtUoLlq3jO03Zu04zDQ0aeGyFNF3xkcksfWGq3dU-PyFg_WUb2LfNGHD1o1Dj6wm2Iu3ExELr6UCqWxVn9qN28DrG6jYiefY7ucoq4b0jiYHQycxJKpdxSTcQuYxhhXdQ54ft80xMR-tsaD_1ffrSU_1LvTzcayITHRR-42yWpmPtT9eoPjom5mu78bJ40wOFP9o2_UTzF8WQdh06EHJJzNW3-bimdSMNFLzzCWA2ZM2A"
+    llama_url = "https://ollama-llama32-316797979759.us-east4.run.app/api/generate"
+
+    headers = {
+    "Authorization": "Bearer "+ token, 
+    "Content-Type": "application/json"}
+    data = {
+        "model": "llama3.2:3b",
+        "prompt": input_text,
+        "stream": False}
+    print("generating answer")
+    response = requests.post(llama_url, json=data, headers=headers)
+    print("generation done")
+    return response
 
 @app.route('/')
 def home():
@@ -193,13 +175,16 @@ def favicon():
 def query():
     try:
         data = request.json
+        print(data)
         query_text = data['query']
         
         pinecone_results = query_pinecone(query_text)
         matches = pinecone_results.get("matches", [])
-        
+        print("fetched context")
         if not matches:
             return jsonify({"answer": "No relevant matches found in the database."})
+        
+        
         
         paper_ids = [int(match['id'].split("#")[0].split("_")[1]) for match in matches]
         dynamo_response = requests.post(
@@ -211,11 +196,10 @@ def query():
             return jsonify({"error": "Failed to retrieve data from DynamoDB.", "details": dynamo_response.json()}), 500
         
         dynamo_data = dynamo_response.json()
-
-        # answer = generate_answer(query_text, matches)
-        answer = "THIS IS MY ANSWER"
-        return jsonify({"result": str(matches), "dynamo_data": dynamo_data, "answer": answer})
+        answer = generate_answer(query_text, matches)
+        return jsonify({"result": str(matches), "dynamo_data": dynamo_data, "answer": answer.text})
     except Exception as e:
+        print("exception raised")
         error_trace = traceback.format_exc()
         print(f"Error: {error_trace}")
         return jsonify({"error": str(e), "trace": error_trace}), 500
