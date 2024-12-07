@@ -2,25 +2,42 @@ import os
 import traceback
 import numpy as np
 import random
+import json
 from flask import Flask, request, jsonify
 from sentence_transformers import SentenceTransformer
 from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline, AutoModelForSeq2SeqLM
 from pinecone import Pinecone
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from boto3.dynamodb.conditions import Attr
 import torch
 from flask_cors import CORS  
 from pypdf import PdfReader
 import os
 import re
-import requests
 import json
+import boto3
+import requests
 
 # Ensure fallback for unsupported operations on MPS
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
 # Pinecone credentials
-api_key = ""
-index_name = "v2-research-paper-index"
+api_key = "pcsk_bYpHQ_MYJaBXuyz9jvAKrVDCJ9GDWQAS2cPFufcQmgJN8UE6oVzYrMYg3tp4cJ1RV4nVb"
+index_name = "research-paper-index"
+
+AWS_ACCESS_KEY_ID = "AKIA6ODU6VDBSWRFQJ6F"  # Replace with your Access Key
+AWS_SECRET_ACCESS_KEY = "gTdXAvAkOcAhBU6UIbQWehkv1L/N/WtNB/4MoPgW"  # Replace with your Secret Key
+AWS_REGION = "us-west-2"  # Replace with your AWS Region
+TABLE_NAME = "pdf_metadata"  # Replace with your DynamoDB table name
+
+# Initialize DynamoDB Resource
+dynamodb = boto3.resource(
+    'dynamodb',
+    aws_access_key_id=AWS_ACCESS_KEY_ID,
+    aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+    region_name=AWS_REGION
+)
+
 
 pc = Pinecone(api_key=api_key)
 index = pc.Index(index_name)
@@ -167,9 +184,20 @@ def query():
         if not matches:
             return jsonify({"answer": "No relevant matches found in the database."})
         
-        answer = generate_answer(query_text, matches)
         
-        return jsonify({"result": answer.text})
+        
+        paper_ids = [int(match['id'].split("#")[0].split("_")[1]) for match in matches]
+        dynamo_response = requests.post(
+            "http://127.0.0.1:5000/getFromDynamo",  # Replace with the actual URL if hosted elsewhere
+            json={"PaperIDs": paper_ids}
+        )
+
+        if dynamo_response.status_code != 200:
+            return jsonify({"error": "Failed to retrieve data from DynamoDB.", "details": dynamo_response.json()}), 500
+        
+        dynamo_data = dynamo_response.json()
+        answer = generate_answer(query_text, matches)
+        return jsonify({"result": str(matches), "dynamo_data": dynamo_data, "answer": answer.text})
     except Exception as e:
         print("exception raised")
         error_trace = traceback.format_exc()
@@ -220,6 +248,59 @@ def summarize():
         # Combine all summaries
         final_summary = " ".join(summaries)
         return jsonify({"summary": final_summary, "temp_file_path": temp_file_path})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+
+@app.route('/addToDynamo', methods=['POST'])
+def addToDynamo():
+    try:
+
+        with open('pdf_metadata.json', 'r') as file:
+            pdf_metadata = json.load(file)
+
+        table = dynamodb.Table(TABLE_NAME)
+
+        for cleaned_filename, metadata in pdf_metadata.items():
+            data_to_add = {
+                "PaperTxtName": cleaned_filename + ".txt", 
+                "PaperID": metadata[0],  
+                "PaperLink": metadata[1],
+                "PaperPDFName": metadata[2]  
+            }
+
+            table.put_item(Item=data_to_add)
+
+        return jsonify({"message": "All items added successfully!"}), 200
+
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/getFromDynamo', methods=['POST'])
+def getFromDynamo():
+    try:
+        request_data = request.get_json()
+        paper_ids = request_data.get("PaperIDs")
+
+        if not paper_ids or not isinstance(paper_ids, list):
+            return jsonify({"error": "Invalid input. Please provide a list of PaperIDs."}), 400
+
+        table = dynamodb.Table(TABLE_NAME)
+
+        results = []
+        for paper_id in paper_ids:
+            response = table.scan(
+                FilterExpression=Attr("PaperID").eq(paper_id)
+            )
+
+            if 'Items' in response and response['Items']:
+                results.extend(response['Items'])
+
+        return jsonify({"data": results}), 200
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
