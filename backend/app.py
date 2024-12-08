@@ -16,7 +16,7 @@ import os
 import re
 import json
 import boto3
-import requests
+import requests 
 
 # Ensure fallback for unsupported operations on MPS
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
@@ -174,8 +174,10 @@ def favicon():
 @app.route('/query', methods=['POST'])
 def query():
     try:
+        print('S1')
         data = request.json
         print(data)
+        print('S2')
         query_text = data['query']
         
         pinecone_results = query_pinecone(query_text)
@@ -206,48 +208,75 @@ def query():
 
 
 @app.route('/summarize', methods=['POST'])
-def summarize():
+def summarize():    
+
     """
     Summarizes the uploaded PDF file.
     Expects a PDF file to be uploaded as a POST request.
     """
     try:
         # Check if a file is uploaded
-        if 'file' not in request.files:
-            return jsonify({"error": "No file uploaded"}), 400
+        # if 'file' not in request.files:
+        #     return jsonify({"error": "No file uploaded"}), 400
 
-        file = request.files['file']
-        original_filename = file.filename
+        # file = request.files['file']
+        file = "/Users/siddharthcv/Downloads/courses/Fall 2024/Cloud Computing/project/mapreduce-osdi04.pdf"
+        # original_filename = file.filename
 
-        # Extract text from the PDF
+        # # Extract text from the PDF
         text = parse_pdf_to_text(file)
 
+        # with open('/Users/siddharthcv/Downloads/courses/Fall 2024/Cloud Computing/project/', 'r') as file:
+        #     text = file.read()
+
         # Optionally save the extracted text to a temporary file
-        temp_folder = "/tmp/pdf_texts"  # Define a temporary folder for saving text files
-        temp_file_path = save_text_to_temp_file(text, temp_folder, original_filename)
+        # temp_folder = "/tmp/pdf_texts"  # Define a temporary folder for saving text files
+        # temp_file_path = save_text_to_temp_file(text, temp_folder, original_filename)
 
-        # Load summarization model
-        model_name = "t5-small"  # Default model
-        summarizer = load_summarizer(model_name)
+        query = "Summarize the content clearly and concisely with a maximum word limit of 300 words."
 
-        if summarizer is None:
-            return jsonify({"error": "Model not supported"}), 500
+        input_text = f"Query: {query}\nContext: {text}\n\nProvide a detailed summary based on the context.\n"
+        token  = "eyJhbGciOiJSUzI1NiIsImtpZCI6IjJjOGEyMGFmN2ZjOThmOTdmNDRiMTQyYjRkNWQwODg0ZWIwOTM3YzQiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJhY2NvdW50cy5nb29nbGUuY29tIiwiYXpwIjoiNjE4MTA0NzA4MDU0LTlyOXMxYzRhbGczNmVybGl1Y2hvOXQ1Mm4zMm42ZGdxLmFwcHMuZ29vZ2xldXNlcmNvbnRlbnQuY29tIiwiYXVkIjoiNjE4MTA0NzA4MDU0LTlyOXMxYzRhbGczNmVybGl1Y2hvOXQ1Mm4zMm42ZGdxLmFwcHMuZ29vZ2xldXNlcmNvbnRlbnQuY29tIiwic3ViIjoiMTEwNjE4MjQ3NDgxMzA0MTY2OTAwIiwiaGQiOiJueXUuZWR1IiwiZW1haWwiOiJ2ZzI1MjNAbnl1LmVkdSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJhdF9oYXNoIjoiWHp1aDY4dDRJNk12dDUxMHFnblJoUSIsIm5iZiI6MTczMzYxNzQwMywiaWF0IjoxNzMzNjE3NzAzLCJleHAiOjE3MzM2MjEzMDMsImp0aSI6ImJmZDY4NGI2MmI4YzFlMmM0MDY1OTE3ZGNhMDM2M2UxNjYxNzBhMzYifQ.AVQEcMLWe-Akbj2QK71wYl41uXx4vCbdo_yBTmQ3JV3GDeXUq5sl41fRFnWn3w6glpTJMQ4E_rDVOSHy0Ad3uMsnm8Holv1smyD5lG9yL1T5s-4K-CvkzO25Z-GytK_-NomfrYXIIr3xa5no1SqCnBRK232pO4gZbUKtAZFVMpLD4W49Wv-67C26SAUXiGRA_lMYJ8gDYzruYynNVUJRQaRoriw55Np0DN-PFp6p3_4Und5iPSU5zD_sX1JPqwhemJIg88MiFAFHfN-8ODXt8ch9pe2iztu-b6VM2sHIFBwy0hA4sXEfjZ_D5g0EMpQO42hF_bD_FtbI9ZaGHM8PLQ"
+        llama_url = "https://ollama-llama32-316797979759.us-east4.run.app/api/generate"
 
-        # Split text into chunks
-        chunks = split_text_with_langchain(text, chunk_size=4096, chunk_overlap=200)
+        headers = {
+        "Authorization": "Bearer "+ token, 
+        "Content-Type": "application/json"}
+        data = {
+            "model": "llama3.2:3b",
+            "prompt": input_text,
+            "stream": False}
+        print("generating answer")
+        try:
+            response = requests.post(llama_url, json=data, headers=headers)
+        except Exception as e:
+            print(e)
 
-        # Summarize each chunk
-        summaries = []
-        for chunk in chunks:
-            try:
-                summary = summarizer(chunk)
-                summaries.append(chunk)
-            except Exception as e:
-                return jsonify({"error": f"Error summarizing chunk: {e}"}), 500
+        print("generation done")
+        return jsonify({"error": str(response.json())}), 200
 
-        # Combine all summaries
-        final_summary = " ".join(summaries)
-        return jsonify({"summary": final_summary, "temp_file_path": temp_file_path})
+    #     # Load summarization model
+    #     model_name = "t5-small"  # Default model
+    #     summarizer = load_summarizer(model_name)
+
+
+    #     if summarizer is None:
+    #         return jsonify({"error": "Model not supported"}), 500
+    #     # Split text into chunks
+    #     chunks = split_text_with_langchain(text, chunk_size=4096, chunk_overlap=200)
+
+    #     # Summarize each chunk
+    #     summaries = []
+    #     for chunk in chunks:
+    #         try:
+    #             summary = summarizer(chunk)
+    #             summaries.append(chunk)
+    #         except Exception as e:
+    #             return jsonify({"error": f"Error summarizing chunk: {e}"}), 500
+
+    #     # Combine all summaries
+    #     final_summary = " ".join(summaries)
+    #     return jsonify({"summary": final_summary, "temp_file_path": temp_file_path})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
