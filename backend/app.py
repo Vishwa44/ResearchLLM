@@ -16,7 +16,22 @@ import os
 import re
 import json
 import boto3
-import requests 
+import requests
+
+AWS_ACCESS_KEY_ID = "AKIA6ODU6VDBY2U5IAWS"  # Replace with your Access Key
+AWS_SECRET_ACCESS_KEY = "DRweNvCw0jtH3r46tGcvnwiZzB/2X2SQdTr6FN5p"  # Replace with your Secret Key
+AWS_REGION = "us-west-2"  # Replace with your AWS Region
+
+# Initialize SQS client with explicit credentials
+sqs = boto3.client(
+    'sqs',
+    aws_access_key_id=AWS_ACCESS_KEY_ID,
+    aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+    region_name=AWS_REGION
+)
+
+# Replace with your queue URL
+QUEUE_URL = 'https://sqs.us-west-2.amazonaws.com/992382724291/UserEmailQueue'
 
 # Ensure fallback for unsupported operations on MPS
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
@@ -25,9 +40,6 @@ os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 api_key = "pcsk_bYpHQ_MYJaBXuyz9jvAKrVDCJ9GDWQAS2cPFufcQmgJN8UE6oVzYrMYg3tp4cJ1RV4nVb"
 index_name = "research-paper-index"
 
-AWS_ACCESS_KEY_ID = "AKIA6ODU6VDBSWRFQJ6F"  # Replace with your Access Key
-AWS_SECRET_ACCESS_KEY = "gTdXAvAkOcAhBU6UIbQWehkv1L/N/WtNB/4MoPgW"  # Replace with your Secret Key
-AWS_REGION = "us-west-2"  # Replace with your AWS Region
 TABLE_NAME = "pdf_metadata"  # Replace with your DynamoDB table name
 
 # Initialize DynamoDB Resource
@@ -49,6 +61,35 @@ CORS(app)
 # Load SentenceTransformer for embeddings
 embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
 # embedding_model = SentenceTransformer('jinaai/jina-embeddings-v2-small-en', trust_remote_code=True).cuda()  # Lightweight model for sentence embeddings
+
+
+@app.route('/register', methods=['POST'])
+def register():
+    """
+    API to accept email and password, and send the email to SQS.
+    """
+    try:
+        # Parse request data
+        data = request.json
+        email = data.get('email')
+        password = data.get('password')  # Currently not used, but should be validated
+
+        if not email or not password:
+            return jsonify({'error': 'Email and password are required'}), 400
+
+        # Send email ID to SQS
+        response = sqs.send_message(
+            QueueUrl=QUEUE_URL,
+            MessageBody=json.dumps({'email': email})
+        )
+
+        return jsonify({
+            'message': 'Email submitted successfully',
+            'messageId': response['MessageId']
+        }), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 # Load the summarizer model
