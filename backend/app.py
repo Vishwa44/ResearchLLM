@@ -1,13 +1,11 @@
 import os
 import traceback
 import numpy as np
-import random
 import json
-from flask import Flask, request, jsonify, url_for
+from flask import Flask, request, jsonify
 from pinecone import Pinecone
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from boto3.dynamodb.conditions import Attr
-import torch
 from flask_cors import CORS  
 from pypdf import PdfReader
 import os
@@ -16,6 +14,8 @@ import json
 import boto3
 import requests
 from openai import OpenAI
+from google.auth.transport.requests import Request
+from google.oauth2.id_token import fetch_id_token
 
 
 
@@ -129,6 +129,12 @@ def query_pinecone(query, top_k=10):
     results = index.query(vector=query_embedding, top_k=top_k, include_metadata=True)
     return results
 
+def get_auth_token():
+    auth_request = Request()
+    target_audience = LLAMA_URL
+    id_token = fetch_id_token(auth_request, target_audience)
+    return id_token
+
 def generate_answer(query, matches):
     context = " ".join(
         [match.get("metadata", {}).get("chunk", "") for match in matches if "metadata" in match]
@@ -137,8 +143,10 @@ def generate_answer(query, matches):
 
     print(input_text)
 
+    auth_token = get_auth_token()
+
     headers = {
-    "Authorization": "Bearer "+ TOKEN, 
+    "Authorization": f"Bearer {auth_token}", 
     "Content-Type": "application/json"}
     data = {
         "model": "llama3.2:3b",
