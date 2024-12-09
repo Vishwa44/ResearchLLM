@@ -18,7 +18,9 @@ import json
 import boto3
 import requests
 from openai import OpenAI
-
+from together import Together
+import vertexai
+from vertexai.generative_models import GenerativeModel
 
 
 # Ensure fallback for unsupported operations on MPS
@@ -30,8 +32,9 @@ AWS_ACCESS_KEY_ID = "AKIA6ODU6VDBSWRFQJ6F"  # Replace with your Access Key
 AWS_SECRET_ACCESS_KEY = "gTdXAvAkOcAhBU6UIbQWehkv1L/N/WtNB/4MoPgW"  # Replace with your Secret Key
 AWS_REGION = "us-west-2"  # Replace with your AWS Region
 TABLE_NAME = "pdf_metadata"  # Replace with your DynamoDB table name
-TOKEN  = "eyJhbGciOiJSUzI1NiIsImtpZCI6IjJjOGEyMGFmN2ZjOThmOTdmNDRiMTQyYjRkNWQwODg0ZWIwOTM3YzQiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJhY2NvdW50cy5nb29nbGUuY29tIiwiYXpwIjoiNjE4MTA0NzA4MDU0LTlyOXMxYzRhbGczNmVybGl1Y2hvOXQ1Mm4zMm42ZGdxLmFwcHMuZ29vZ2xldXNlcmNvbnRlbnQuY29tIiwiYXVkIjoiNjE4MTA0NzA4MDU0LTlyOXMxYzRhbGczNmVybGl1Y2hvOXQ1Mm4zMm42ZGdxLmFwcHMuZ29vZ2xldXNlcmNvbnRlbnQuY29tIiwic3ViIjoiMTEwNjE4MjQ3NDgxMzA0MTY2OTAwIiwiaGQiOiJueXUuZWR1IiwiZW1haWwiOiJ2ZzI1MjNAbnl1LmVkdSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJhdF9oYXNoIjoib1FBTWNscDNmNktPZG5peWFXenN4dyIsIm5iZiI6MTczMzYwODc2NiwiaWF0IjoxNzMzNjA5MDY2LCJleHAiOjE3MzM2MTI2NjYsImp0aSI6ImI5NjcxODRmNWM4YWU0YjAwN2VmMjNmZDQwMjUwNjJjYWQzNmYxMDkifQ.D4lhfC52HkceZrnoXl2sOXmUhwYg-nAbtsV8Ray05xnQwu_d1fiygY9IfrmMNpIjaUs_LwEHXjTh6EuJX1y_OZyCDP8LV3xtGVeVYaIqAhtUoLlq3jO03Zu04zDQ0aeGyFNF3xkcksfWGq3dU-PyFg_WUb2LfNGHD1o1Dj6wm2Iu3ExELr6UCqWxVn9qN28DrG6jYiefY7ucoq4b0jiYHQycxJKpdxSTcQuYxhhXdQ54ft80xMR-tsaD_1ffrSU_1LvTzcayITHRR-42yWpmPtT9eoPjom5mu78bJ40wOFP9o2_UTzF8WQdh06EHJJzNW3-bimdSMNFLzzCWA2ZM2A"
+TOKEN  = "eyJhbGciOiJSUzI1NiIsImtpZCI6IjJjOGEyMGFmN2ZjOThmOTdmNDRiMTQyYjRkNWQwODg0ZWIwOTM3YzQiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJhY2NvdW50cy5nb29nbGUuY29tIiwiYXpwIjoiNjE4MTA0NzA4MDU0LTlyOXMxYzRhbGczNmVybGl1Y2hvOXQ1Mm4zMm42ZGdxLmFwcHMuZ29vZ2xldXNlcmNvbnRlbnQuY29tIiwiYXVkIjoiNjE4MTA0NzA4MDU0LTlyOXMxYzRhbGczNmVybGl1Y2hvOXQ1Mm4zMm42ZGdxLmFwcHMuZ29vZ2xldXNlcmNvbnRlbnQuY29tIiwic3ViIjoiMTEwNjE4MjQ3NDgxMzA0MTY2OTAwIiwiaGQiOiJueXUuZWR1IiwiZW1haWwiOiJ2ZzI1MjNAbnl1LmVkdSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJhdF9oYXNoIjoiaGw1eTBac3lIdTVzUGJlYWUxaW1kZyIsIm5iZiI6MTczMzc3MzU5NiwiaWF0IjoxNzMzNzczODk2LCJleHAiOjE3MzM3Nzc0OTYsImp0aSI6IjQ5NTBlOWZmYmRjMTUwYTE4Yzc1MzczZjdiYzIyZGMxOTA1NjAyOWUifQ.VrxAwriqGyBEczyXYu2f8bJMaXWg3KhmdD9GXzTAbAIhegRylZx_QNvDVVHsS0CJ6uA19hzkPUz0dldXm4MazHEYOp92faEBS44lOuc0_GevkEwdmGPE1HtTxcWFEtUiHoUzYzB41M1yPZF_JTg0EUJ2KhFMt-1m2dzGW1PbrusHL60lNg-1xqrWj8DU4R9W0hs0MPMI1doYxy8TFqPHeFVi3DcbzlqFO81lrO8wHXvrVBeYvlsgi57rhMobyEO9NLYS6O8R_qflEfVDQqhcIalCU-rRXz7KPwtX5ycMN4MQI_-vJTjNlDcHt7LqGYaRtInsvv0go7Nbm6meoAms1Q"
 LLAMA_URL = "https://ollama-llama32-316797979759.us-east4.run.app/api/generate"
+TOGETHER_API_KEY = "7da8c3e879a9b326564bca00116aaf5845eabd3cd360ad38c18c8bcfec7c3b2d"
 
 
 # Initialize DynamoDB Resource
@@ -48,6 +51,7 @@ index = pc.Index(PINECONE_INDEX_NAME)
 
 openAIClient = OpenAI(api_key=OPENAI_API_KEY,)
 
+client = Together(api_key=TOGETHER_API_KEY)
 # Initialize Flask app
 app = Flask(__name__)
 CORS(app)
@@ -130,22 +134,42 @@ def query_pinecone(query, top_k=10):
     results = index.query(vector=query_embedding, top_k=top_k, include_metadata=True)
     return results
 
-def generate_answer(query, matches):
+def generate_answer(query, matches, model_type):
     context = " ".join(
         [match.get("metadata", {}).get("chunk", "") for match in matches if "metadata" in match]
     )
     input_text = f"Query: {query}\nContext: {context}\n\nBased on the Context please answer the Query\n"
-
-    headers = {
-    "Authorization": "Bearer "+ TOKEN, 
-    "Content-Type": "application/json"}
-    data = {
-        "model": "llama3.2:3b",
-        "prompt": input_text,
-        "stream": False}
-    print("generating answer")
-    response = requests.post(LLAMA_URL, json=data, headers=headers)
-    print("generation done")
+    if model_type == "llama3.2":
+        headers = {
+        "Authorization": "Bearer "+ TOKEN, 
+        "Content-Type": "application/json"}
+        data = {
+            "model": "llama3.2:3b",
+            "prompt": input_text,
+            "stream": False}
+        print("generating answer")
+        responseAPI = requests.post(LLAMA_URL, json=data, headers=headers)
+        response = responseAPI.text
+        print("generation done")
+    elif model_type == "llama3.3":
+        responseAPI = client.chat.completions.create(
+        model="meta-llama/Llama-3.3-70B-Instruct-Turbo",
+        messages=[
+                {"role": "system", "content": "You are a helpful assistant for the conducting research that answers questions based on provided context. Don't mention anything about the context when answering"},
+                {"role": "user", "content": input_text}
+            ],
+        stream=False)
+        print("generating answer")
+        response = responseAPI.choices[0].message.content
+        print("generation done")
+    elif model_type == "gemini1.5":
+        PROJECT_ID = "lofty-cabinet-443918-a9"
+        vertexai.init(project=PROJECT_ID, location="us-central1")
+        model = GenerativeModel("gemini-1.5-flash-002")
+        print("generating answer")
+        responseAPI = model.generate_content(input_text)
+        response = responseAPI.candidates[0].content.parts[0].text
+        print("generation done")
     return response
 
 @app.route('/query', methods=['POST'])
@@ -153,7 +177,7 @@ def query():
     try:
         data = request.json
         query_text = data['query']
-        
+        model_type = data['model'] 
         pinecone_results = query_pinecone(query_text)
         matches = pinecone_results.get("matches", [])
         if not matches:
@@ -169,8 +193,8 @@ def query():
             return jsonify({"error": "Failed to retrieve data from DynamoDB.", "details": dynamo_response.json()}), 500
         
         dynamo_data = dynamo_response.json()
-        answer = generate_answer(query_text, matches[:5])
-        return jsonify({"result": str(matches), "dynamo_data": dynamo_data, "answer": answer.text})
+        answer = generate_answer(query_text, matches[:5], model_type)
+        return jsonify({"result": str(matches), "dynamo_data": dynamo_data, "answer": answer})
     except Exception as e:
         print("exception raised")
         error_trace = traceback.format_exc()
