@@ -17,6 +17,7 @@ import re
 import json
 import boto3
 import requests
+import uuid
 
 AWS_ACCESS_KEY_ID = "AKIA6ODU6VDBY2U5IAWS"  # Replace with your Access Key
 AWS_SECRET_ACCESS_KEY = "DRweNvCw0jtH3r46tGcvnwiZzB/2X2SQdTr6FN5p"  # Replace with your Secret Key
@@ -50,6 +51,16 @@ dynamodb = boto3.resource(
     region_name=AWS_REGION
 )
 
+# Initialize DynamoDB client for user DB
+dynamodb = boto3.resource(
+    'dynamodb',
+    aws_access_key_id=AWS_ACCESS_KEY_ID,
+    aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+    region_name=AWS_REGION
+)
+
+USER_TABLE_NAME = 'research_user_table'
+
 
 pc = Pinecone(api_key=api_key)
 index = pc.Index(index_name)
@@ -76,11 +87,27 @@ def register():
 
         if not email or not password:
             return jsonify({'error': 'Email and password are required'}), 400
+        
+        # print('email: ',email,' password: ',password)
 
-        # Send email ID to SQS
+        # Step 1: Send email ID to SQS
         response = sqs.send_message(
             QueueUrl=QUEUE_URL,
             MessageBody=json.dumps({'email': email})
+        )
+
+        new_uuid = uuid.uuid4()
+
+        # Step 2: Store user details in DynamoDB
+        table = dynamodb.Table(USER_TABLE_NAME)
+        dynamodb_response = table.put_item(
+            Item={
+                'email': email,
+                'password': password,
+                'paper_id': [],
+                'active': 0,
+                'user_id': str(new_uuid)
+            }
         )
 
         return jsonify({
