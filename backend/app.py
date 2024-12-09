@@ -170,7 +170,7 @@ def query():
         
         dynamo_data = dynamo_response.json()
         answer = generate_answer(query_text, matches[:5])
-        return jsonify({"result": str(matches), "dynamo_data": dynamo_data, "answer": "answer.text"})
+        return jsonify({"result": str(matches), "dynamo_data": dynamo_data, "answer": answer.text})
     except Exception as e:
         print("exception raised")
         error_trace = traceback.format_exc()
