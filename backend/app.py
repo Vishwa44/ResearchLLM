@@ -3,9 +3,7 @@ import traceback
 import numpy as np
 import random
 import json
-from flask import Flask, request, jsonify
-from sentence_transformers import SentenceTransformer
-from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline, AutoModelForSeq2SeqLM
+from flask import Flask, request, jsonify, url_for
 from pinecone import Pinecone
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from boto3.dynamodb.conditions import Attr
@@ -23,15 +21,16 @@ from openai import OpenAI
 
 # Ensure fallback for unsupported operations on MPS
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
-PINECONE_KEY = "pcsk_733LpQ_3vUPKxHKBvL21VL4JaZVMoW1XxF2xFyWFZDx5brAgnbrQ5UVoySp7ad26QU416D" #Updated to access the openAI embedding
-PINECONE_INDEX_NAME = "v2-research-paper-index" #Pinecone index name
-OPENAI_API_KEY="sk-cZPrWqOChvs4ZVzmnN86oimk0uame9WaV07CVLKIWzT3BlbkFJdoBT2V24zTFu_mUzWOnwNqv-qkgnQPtcB3ErD3vw8A" #OpenAI api key
-AWS_ACCESS_KEY_ID = "AKIA6ODU6VDBSWRFQJ6F"  # Replace with your Access Key
-AWS_SECRET_ACCESS_KEY = "gTdXAvAkOcAhBU6UIbQWehkv1L/N/WtNB/4MoPgW"  # Replace with your Secret Key
-AWS_REGION = "us-west-2"  # Replace with your AWS Region
-TABLE_NAME = "pdf_metadata"  # Replace with your DynamoDB table name
-TOKEN  = "eyJhbGciOiJSUzI1NiIsImtpZCI6IjJjOGEyMGFmN2ZjOThmOTdmNDRiMTQyYjRkNWQwODg0ZWIwOTM3YzQiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJhY2NvdW50cy5nb29nbGUuY29tIiwiYXpwIjoiNjE4MTA0NzA4MDU0LTlyOXMxYzRhbGczNmVybGl1Y2hvOXQ1Mm4zMm42ZGdxLmFwcHMuZ29vZ2xldXNlcmNvbnRlbnQuY29tIiwiYXVkIjoiNjE4MTA0NzA4MDU0LTlyOXMxYzRhbGczNmVybGl1Y2hvOXQ1Mm4zMm42ZGdxLmFwcHMuZ29vZ2xldXNlcmNvbnRlbnQuY29tIiwic3ViIjoiMTEwNjE4MjQ3NDgxMzA0MTY2OTAwIiwiaGQiOiJueXUuZWR1IiwiZW1haWwiOiJ2ZzI1MjNAbnl1LmVkdSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJhdF9oYXNoIjoib1FBTWNscDNmNktPZG5peWFXenN4dyIsIm5iZiI6MTczMzYwODc2NiwiaWF0IjoxNzMzNjA5MDY2LCJleHAiOjE3MzM2MTI2NjYsImp0aSI6ImI5NjcxODRmNWM4YWU0YjAwN2VmMjNmZDQwMjUwNjJjYWQzNmYxMDkifQ.D4lhfC52HkceZrnoXl2sOXmUhwYg-nAbtsV8Ray05xnQwu_d1fiygY9IfrmMNpIjaUs_LwEHXjTh6EuJX1y_OZyCDP8LV3xtGVeVYaIqAhtUoLlq3jO03Zu04zDQ0aeGyFNF3xkcksfWGq3dU-PyFg_WUb2LfNGHD1o1Dj6wm2Iu3ExELr6UCqWxVn9qN28DrG6jYiefY7ucoq4b0jiYHQycxJKpdxSTcQuYxhhXdQ54ft80xMR-tsaD_1ffrSU_1LvTzcayITHRR-42yWpmPtT9eoPjom5mu78bJ40wOFP9o2_UTzF8WQdh06EHJJzNW3-bimdSMNFLzzCWA2ZM2A"
-LLAMA_URL = "https://ollama-llama32-316797979759.us-east4.run.app/api/generate"
+PINECONE_KEY = os.getenv("PINECONE_KEY")
+PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+AWS_REGION = os.getenv("AWS_REGION")
+TABLE_NAME = os.getenv("TABLE_NAME")
+TOKEN = os.getenv("TOKEN")
+LLAMA_URL = os.getenv("LLAMA_URL")
+BACKEND_DOMAIN = os.getenv("BACKEND_DOMAIN")
 
 
 # Initialize DynamoDB Resource
@@ -134,7 +133,9 @@ def generate_answer(query, matches):
     context = " ".join(
         [match.get("metadata", {}).get("chunk", "") for match in matches if "metadata" in match]
     )
-    input_text = f"Query: {query}\nContext: {context}\n\nBased on the Context please answer the Query\n"
+    input_text = f"This is my question: {query}, please answer the question based on the following context: {context}\n\nDo not mention that you have been given context\n"
+
+    print(input_text)
 
     headers = {
     "Authorization": "Bearer "+ TOKEN, 
@@ -144,33 +145,38 @@ def generate_answer(query, matches):
         "prompt": input_text,
         "stream": False}
     print("generating answer")
-    response = requests.post(LLAMA_URL, json=data, headers=headers)
+    try:
+        response = requests.post(LLAMA_URL, json=data, headers=headers)
+    except Exception as e:
+        print(f"Error: {e}")
     print("generation done")
     return response
+
+@app.route('/health', methods=['GET'])
+def health():
+    return jsonify({"status": "OK"}), 200
 
 @app.route('/query', methods=['POST'])
 def query():
     try:
         data = request.json
         query_text = data['query']
-        
+        print(f"1: query text: {query_text}")
         pinecone_results = query_pinecone(query_text)
         matches = pinecone_results.get("matches", [])
         if not matches:
             return jsonify({"answer": "No relevant matches found in the database."})
         
         paper_ids = list(set(int(match['id'].split("#")[0].split("_")[1]) for match in matches))[:5]
-        dynamo_response = requests.post(
-            "http://127.0.0.1:5000/getFromDynamo",  # Replace with the actual URL if hosted elsewhere
-            json={"PaperIDs": paper_ids}
-        )
+        dynamo_response = getPapersFromDynamo(paper_ids)
+        print(f"2: Paper IDs: {paper_ids}")
+        print(f"4: Dynamo Response :{dynamo_response}")
 
-        if dynamo_response.status_code != 200:
-            return jsonify({"error": "Failed to retrieve data from DynamoDB.", "details": dynamo_response.json()}), 500
+        if type(dynamo_response) == str:
+            return jsonify({"error": "Failed to retrieve data from DynamoDB.", "details": dynamo_response}), 500
         
-        dynamo_data = dynamo_response.json()
-        answer = generate_answer(query_text, matches[:5])
-        return jsonify({"result": str(matches), "dynamo_data": dynamo_data, "answer": "answer.text"})
+        answer = generate_answer(query_text, matches[:3])
+        return jsonify({"result": str(matches), "dynamo_data": dynamo_response, "answer": answer.text})
     except Exception as e:
         print("exception raised")
         error_trace = traceback.format_exc()
@@ -254,11 +260,27 @@ def getFromDynamo():
     try:
         request_data = request.get_json()
         paper_ids = request_data.get("PaperIDs")
+        results = getPapersFromDynamo(paper_ids)
+
+        if type(results) == str:
+            return jsonify({"error": "Failed to retrieve data from DynamoDB.", "details": results}), 500
+
+        return jsonify({"data": results}), 200
+
+    except Exception as e:
+        print(f"2.5: Exception: {e}")
+        return jsonify({"error": str(e)}), 500
+
+def getPapersFromDynamo(paper_ids):
+    try:
+        print(f"2.1: Paper IDs: {paper_ids}")
 
         if not paper_ids or not isinstance(paper_ids, list):
-            return jsonify({"error": "Invalid input. Please provide a list of PaperIDs."}), 400
+            print(f"2.2: If statement")
+            return "Invalid input. Please provide a list of PaperIDs."
 
         table = dynamodb.Table(TABLE_NAME)
+        print(f"2.3: Table name: {table}")
 
         results = []
         for paper_id in paper_ids:
@@ -268,12 +290,13 @@ def getFromDynamo():
 
             if 'Items' in response and response['Items']:
                 results.extend(response['Items'])
+        print(f"2.4: Results: {results}")
 
-        return jsonify({"data": results}), 200
+        return results
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
+        print(f"2.5: Exception: {e}")
+        return str(e)
 
 if __name__ == '__main__':
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5050, debug=True)
