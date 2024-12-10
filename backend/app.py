@@ -359,12 +359,12 @@ def summarize():
         print("generating answer")
         try:
             print("test")
-            # response = requests.post(LLAMA_URL, json=data, headers=headers)
+            response = requests.post(LLAMA_URL, json=data, headers=headers)
         except Exception as e:
             print(e)
 
         print("generation done")
-        return jsonify({"message": str("response.json()")}), 200
+        return jsonify({"message": str(response.json())}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
