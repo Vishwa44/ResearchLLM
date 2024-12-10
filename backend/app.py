@@ -1,15 +1,11 @@
 import os
 import traceback
 import numpy as np
-import random
 import json
 from flask import Flask, request, jsonify
-from sentence_transformers import SentenceTransformer
-from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline, AutoModelForSeq2SeqLM
 from pinecone import Pinecone
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from boto3.dynamodb.conditions import Attr
-import torch
 from flask_cors import CORS  
 from pypdf import PdfReader
 import os
@@ -18,20 +14,26 @@ import json
 import boto3
 import requests
 from openai import OpenAI
-
+from google.auth.transport.requests import Request
+from google.oauth2.id_token import fetch_id_token
+from together import Together
+import vertexai
+from vertexai.generative_models import GenerativeModel
 
 # Ensure fallback for unsupported operations on MPS
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
-PINECONE_KEY = "pcsk_733LpQ_3vUPKxHKBvL21VL4JaZVMoW1XxF2xFyWFZDx5brAgnbrQ5UVoySp7ad26QU416D" #Updated to access the openAI embedding
-PINECONE_INDEX_NAME = "v2-research-paper-index" #Pinecone index name
-OPENAI_API_KEY="sk-cZPrWqOChvs4ZVzmnN86oimk0uame9WaV07CVLKIWzT3BlbkFJdoBT2V24zTFu_mUzWOnwNqv-qkgnQPtcB3ErD3vw8A" #OpenAI api key
-AWS_ACCESS_KEY_ID = "AKIA6ODU6VDBY2U5IAWS"  # Replace with your Access Key
-AWS_SECRET_ACCESS_KEY = "DRweNvCw0jtH3r46tGcvnwiZzB/2X2SQdTr6FN5p"  # Replace with your Secret Key
-AWS_REGION = "us-west-2"  # Replace with your AWS Region
-TABLE_NAME = "pdf_metadata"  # Replace with your DynamoDB table name
-TOKEN  = "eyJhbGciOiJSUzI1NiIsImtpZCI6IjJjOGEyMGFmN2ZjOThmOTdmNDRiMTQyYjRkNWQwODg0ZWIwOTM3YzQiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJhY2NvdW50cy5nb29nbGUuY29tIiwiYXpwIjoiNjE4MTA0NzA4MDU0LTlyOXMxYzRhbGczNmVybGl1Y2hvOXQ1Mm4zMm42ZGdxLmFwcHMuZ29vZ2xldXNlcmNvbnRlbnQuY29tIiwiYXVkIjoiNjE4MTA0NzA4MDU0LTlyOXMxYzRhbGczNmVybGl1Y2hvOXQ1Mm4zMm42ZGdxLmFwcHMuZ29vZ2xldXNlcmNvbnRlbnQuY29tIiwic3ViIjoiMTEwNjE4MjQ3NDgxMzA0MTY2OTAwIiwiaGQiOiJueXUuZWR1IiwiZW1haWwiOiJ2ZzI1MjNAbnl1LmVkdSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJhdF9oYXNoIjoib1FBTWNscDNmNktPZG5peWFXenN4dyIsIm5iZiI6MTczMzYwODc2NiwiaWF0IjoxNzMzNjA5MDY2LCJleHAiOjE3MzM2MTI2NjYsImp0aSI6ImI5NjcxODRmNWM4YWU0YjAwN2VmMjNmZDQwMjUwNjJjYWQzNmYxMDkifQ.D4lhfC52HkceZrnoXl2sOXmUhwYg-nAbtsV8Ray05xnQwu_d1fiygY9IfrmMNpIjaUs_LwEHXjTh6EuJX1y_OZyCDP8LV3xtGVeVYaIqAhtUoLlq3jO03Zu04zDQ0aeGyFNF3xkcksfWGq3dU-PyFg_WUb2LfNGHD1o1Dj6wm2Iu3ExELr6UCqWxVn9qN28DrG6jYiefY7ucoq4b0jiYHQycxJKpdxSTcQuYxhhXdQ54ft80xMR-tsaD_1ffrSU_1LvTzcayITHRR-42yWpmPtT9eoPjom5mu78bJ40wOFP9o2_UTzF8WQdh06EHJJzNW3-bimdSMNFLzzCWA2ZM2A"
-LLAMA_URL = "https://ollama-llama32-316797979759.us-east4.run.app/api/generate"
-AWS_STORAGE_BUCKET_NAME = "research-llm-pdfs"
+PINECONE_KEY = os.getenv("PINECONE_KEY")
+PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+AWS_REGION = os.getenv("AWS_REGION")
+TABLE_NAME = os.getenv("TABLE_NAME")
+TOKEN = os.getenv("TOKEN")
+LLAMA_URL = os.getenv("LLAMA_URL")
+BACKEND_DOMAIN = os.getenv("BACKEND_DOMAIN")
+TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
+GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID")
 
 # Initialize DynamoDB Resource
 dynamodb = boto3.resource(
@@ -46,6 +48,7 @@ pc = Pinecone(api_key=PINECONE_KEY)
 index = pc.Index(PINECONE_INDEX_NAME)
 
 openAIClient = OpenAI(api_key=OPENAI_API_KEY,)
+client = Together(api_key=TOGETHER_API_KEY)
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -129,22 +132,55 @@ def query_pinecone(query, top_k=10):
     results = index.query(vector=query_embedding, top_k=top_k, include_metadata=True)
     return results
 
-def generate_answer(query, matches):
+def get_auth_token():
+    auth_request = Request()
+    target_audience = LLAMA_URL
+    id_token = fetch_id_token(auth_request, target_audience)
+    print(f"Getting auth token: {id_token}")
+    return id_token
+
+def generate_answer(query, matches, model_type):
     context = " ".join(
         [match.get("metadata", {}).get("chunk", "") for match in matches if "metadata" in match]
     )
-    input_text = f"Query: {query}\nContext: {context}\n\nBased on the Context please answer the Query\n"
+    input_text = f"This is my question: {query}, please answer the question based on the following context: {context}\n\nDo not mention that you have been given context\n"
 
-    headers = {
-    "Authorization": "Bearer "+ TOKEN, 
-    "Content-Type": "application/json"}
-    data = {
-        "model": "llama3.2:3b",
-        "prompt": input_text,
-        "stream": False}
-    print("generating answer")
-    response = requests.post(LLAMA_URL, json=data, headers=headers)
-    print("generation done")
+    print(input_text)
+
+    if model_type == "llama3.2":
+        auth_token = get_auth_token()
+        print(f"Auth token: {auth_token}")
+        headers = {
+        "Authorization": f"Bearer {auth_token}", 
+        "Content-Type": "application/json"}
+        data = {
+            "model": "llama3.2:3b",
+            "prompt": input_text,
+            "stream": False}
+        print("generating answer")
+        try:
+            response = requests.post(LLAMA_URL, json=data, headers=headers)
+        except Exception as e:
+            print(f"Error: {e}")
+        print("generation done")
+    elif model_type == "llama3.3":
+        responseAPI = client.chat.completions.create(
+        model="meta-llama/Llama-3.3-70B-Instruct-Turbo",
+        messages=[
+                {"role": "system", "content": "You are a helpful assistant for the conducting research that answers questions based on provided context. Don't mention anything about the context when answering"},
+                {"role": "user", "content": input_text}
+            ],
+        stream=False)
+        print("generating answer")
+        response = responseAPI.choices[0].message.content
+        print("generation done")
+    elif model_type == "gemini1.5":
+        vertexai.init(project=GCP_PROJECT_ID, location="us-central1")
+        model = GenerativeModel("gemini-1.5-flash-002")
+        print("generating answer")
+        responseAPI = model.generate_content(input_text)
+        response = responseAPI.candidates[0].content.parts[0].text
+        print("generation done")
     return response
 
 def s3_upload(file):
@@ -189,30 +225,35 @@ def s3_upload(file):
             print(f"Error uploading file to S3: {e}")
             return ""
     return ""
+@app.route('/health', methods=['GET'])
+def health():
+    return jsonify({"status": "OK"}), 200
 
 @app.route('/query', methods=['POST'])
 def query():
     try:
         data = request.json
         query_text = data['query']
-        
+        model_type = data['model'] 
+        print(f"1: query text: {query_text}, model type:{model_type}")
         pinecone_results = query_pinecone(query_text)
         matches = pinecone_results.get("matches", [])
         if not matches:
             return jsonify({"answer": "No relevant matches found in the database."})
         
         paper_ids = list(set(int(match['id'].split("#")[0].split("_")[1]) for match in matches))[:5]
-        dynamo_response = requests.post(
-            "http://127.0.0.1:5000/getFromDynamo",  # Replace with the actual URL if hosted elsewhere
-            json={"PaperIDs": paper_ids}
-        )
+        dynamo_response = getPapersFromDynamo(paper_ids)
+        print(f"2: Paper IDs: {paper_ids}")
+        print(f"4: Dynamo Response :{dynamo_response}")
 
-        if dynamo_response.status_code != 200:
-            return jsonify({"error": "Failed to retrieve data from DynamoDB.", "details": dynamo_response.json()}), 500
+        if type(dynamo_response) == str:
+            return jsonify({"error": "Failed to retrieve data from DynamoDB.", "details": dynamo_response}), 500
         
-        dynamo_data = dynamo_response.json()
-        answer = generate_answer(query_text, matches[:5])
-        return jsonify({"result": str(matches), "dynamo_data": dynamo_data, "answer": "answer.text"})
+        answer = generate_answer(query_text, matches[:3], model_type)
+        if model_type == "llama3.2":
+            answer = json.loads(answer.text)
+            return jsonify({"result": str(matches), "dynamo_data": dynamo_response, "answer": answer['response']})
+        return jsonify({"result": str(matches), "dynamo_data": dynamo_response, "answer": answer})
     except Exception as e:
         print("exception raised")
         error_trace = traceback.format_exc()
@@ -356,11 +397,27 @@ def getFromDynamo():
     try:
         request_data = request.get_json()
         paper_ids = request_data.get("PaperIDs")
+        results = getPapersFromDynamo(paper_ids)
+
+        if type(results) == str:
+            return jsonify({"error": "Failed to retrieve data from DynamoDB.", "details": results}), 500
+
+        return jsonify({"data": results}), 200
+
+    except Exception as e:
+        print(f"2.5: Exception: {e}")
+        return jsonify({"error": str(e)}), 500
+
+def getPapersFromDynamo(paper_ids):
+    try:
+        print(f"2.1: Paper IDs: {paper_ids}")
 
         if not paper_ids or not isinstance(paper_ids, list):
-            return jsonify({"error": "Invalid input. Please provide a list of PaperIDs."}), 400
+            print(f"2.2: If statement")
+            return "Invalid input. Please provide a list of PaperIDs."
 
         table = dynamodb.Table(TABLE_NAME)
+        print(f"2.3: Table name: {table}")
 
         results = []
         for paper_id in paper_ids:
@@ -370,11 +427,13 @@ def getFromDynamo():
 
             if 'Items' in response and response['Items']:
                 results.extend(response['Items'])
+        print(f"2.4: Results: {results}")
 
-        return jsonify({"data": results}), 200
+        return results
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        print(f"2.5: Exception: {e}")
+        return str(e)
 
 if __name__ == '__main__':
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5050, debug=True)
