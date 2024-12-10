@@ -16,6 +16,9 @@ import requests
 from openai import OpenAI
 from google.auth.transport.requests import Request
 from google.oauth2.id_token import fetch_id_token
+from together import Together
+import vertexai
+from vertexai.generative_models import GenerativeModel
 
 
 
@@ -31,7 +34,8 @@ TABLE_NAME = os.getenv("TABLE_NAME")
 TOKEN = os.getenv("TOKEN")
 LLAMA_URL = os.getenv("LLAMA_URL")
 BACKEND_DOMAIN = os.getenv("BACKEND_DOMAIN")
-
+TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
+GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID")
 
 # Initialize DynamoDB Resource
 dynamodb = boto3.resource(
@@ -46,6 +50,7 @@ pc = Pinecone(api_key=PINECONE_KEY)
 index = pc.Index(PINECONE_INDEX_NAME)
 
 openAIClient = OpenAI(api_key=OPENAI_API_KEY,)
+client = Together(api_key=TOGETHER_API_KEY)
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -133,9 +138,10 @@ def get_auth_token():
     auth_request = Request()
     target_audience = LLAMA_URL
     id_token = fetch_id_token(auth_request, target_audience)
+    print(f"Getting auth token: {id_token}")
     return id_token
 
-def generate_answer(query, matches):
+def generate_answer(query, matches, model_type):
     context = " ".join(
         [match.get("metadata", {}).get("chunk", "") for match in matches if "metadata" in match]
     )
@@ -143,21 +149,40 @@ def generate_answer(query, matches):
 
     print(input_text)
 
-    auth_token = get_auth_token()
-
-    headers = {
-    "Authorization": f"Bearer {auth_token}", 
-    "Content-Type": "application/json"}
-    data = {
-        "model": "llama3.2:3b",
-        "prompt": input_text,
-        "stream": False}
-    print("generating answer")
-    try:
-        response = requests.post(LLAMA_URL, json=data, headers=headers)
-    except Exception as e:
-        print(f"Error: {e}")
-    print("generation done")
+    if model_type == "llama3.2":
+        auth_token = get_auth_token()
+        print(f"Auth token: {auth_token}")
+        headers = {
+        "Authorization": f"Bearer {auth_token}", 
+        "Content-Type": "application/json"}
+        data = {
+            "model": "llama3.2:3b",
+            "prompt": input_text,
+            "stream": False}
+        print("generating answer")
+        try:
+            response = requests.post(LLAMA_URL, json=data, headers=headers)
+        except Exception as e:
+            print(f"Error: {e}")
+        print("generation done")
+    elif model_type == "llama3.3":
+        responseAPI = client.chat.completions.create(
+        model="meta-llama/Llama-3.3-70B-Instruct-Turbo",
+        messages=[
+                {"role": "system", "content": "You are a helpful assistant for the conducting research that answers questions based on provided context. Don't mention anything about the context when answering"},
+                {"role": "user", "content": input_text}
+            ],
+        stream=False)
+        print("generating answer")
+        response = responseAPI.choices[0].message.content
+        print("generation done")
+    elif model_type == "gemini1.5":
+        vertexai.init(project=GCP_PROJECT_ID, location="us-central1")
+        model = GenerativeModel("gemini-1.5-flash-002")
+        print("generating answer")
+        responseAPI = model.generate_content(input_text)
+        response = responseAPI.candidates[0].content.parts[0].text
+        print("generation done")
     return response
 
 @app.route('/health', methods=['GET'])
@@ -169,7 +194,8 @@ def query():
     try:
         data = request.json
         query_text = data['query']
-        print(f"1: query text: {query_text}")
+        model_type = data['model'] 
+        print(f"1: query text: {query_text}, model type:{model_type}")
         pinecone_results = query_pinecone(query_text)
         matches = pinecone_results.get("matches", [])
         if not matches:
@@ -183,8 +209,11 @@ def query():
         if type(dynamo_response) == str:
             return jsonify({"error": "Failed to retrieve data from DynamoDB.", "details": dynamo_response}), 500
         
-        answer = generate_answer(query_text, matches[:3])
-        return jsonify({"result": str(matches), "dynamo_data": dynamo_response, "answer": answer.text})
+        answer = generate_answer(query_text, matches[:3], model_type)
+        if model_type == "llama3.2":
+            answer = json.loads(answer.text)
+            return jsonify({"result": str(matches), "dynamo_data": dynamo_response, "answer": answer['response']})
+        return jsonify({"result": str(matches), "dynamo_data": dynamo_response, "answer": answer})
     except Exception as e:
         print("exception raised")
         error_trace = traceback.format_exc()
