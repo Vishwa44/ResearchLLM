@@ -20,8 +20,6 @@ from together import Together
 import vertexai
 from vertexai.generative_models import GenerativeModel
 
-
-
 # Ensure fallback for unsupported operations on MPS
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 PINECONE_KEY = os.getenv("PINECONE_KEY")
