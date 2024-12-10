@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Menu, FileText } from "lucide-react";
+import NavBar from "../navbar";
 
 const DotPattern = () => (
   <svg className="absolute w-full h-full" xmlns="http://www.w3.org/2000/svg">
@@ -218,9 +219,7 @@ const NotebookInterface = () => {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
-        <div className="h-14 flex items-center px-4 border-b border-zinc-800">
-          <h1 className="text-lg">Research Paper Summarizer</h1>
-        </div>
+        <NavBar />
 
         {/* Empty State with Dot Pattern */}
         <div className="flex-1 relative flex items-center justify-center">

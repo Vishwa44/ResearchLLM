@@ -14,6 +14,7 @@ import json
 import boto3
 import requests
 from openai import OpenAI
+import uuid
 from google.auth.transport.requests import Request
 from google.oauth2.id_token import fetch_id_token
 from together import Together
@@ -43,6 +44,28 @@ dynamodb = boto3.resource(
     region_name=AWS_REGION
 )
 
+# Initialize DynamoDB client for user DB
+dynamodb = boto3.resource(
+    'dynamodb',
+    aws_access_key_id=AWS_ACCESS_KEY_ID,
+    aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+    region_name=AWS_REGION
+)
+
+sqs = boto3.client(
+    'sqs',
+    aws_access_key_id=AWS_ACCESS_KEY_ID,
+    aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+    region_name=AWS_REGION
+)
+# AWS_ACCESS_KEY_ID = "AKIA6ODU6VDBY2U5IAWS"  # Replace with your Access Key
+# AWS_SECRET_ACCESS_KEY = "DRweNvCw0jtH3r46tGcvnwiZzB/2X2SQdTr6FN5p"  # Replace with your Secret Key
+# Replace with your queue URL
+QUEUE_URL = 'https://sqs.us-west-2.amazonaws.com/992382724291/UserEmailQueue'
+
+
+USER_TABLE_NAME = 'research_user_table'
+
 
 pc = Pinecone(api_key=PINECONE_KEY)
 index = pc.Index(PINECONE_INDEX_NAME)
@@ -53,7 +76,52 @@ client = Together(api_key=TOGETHER_API_KEY)
 # Initialize Flask app
 app = Flask(__name__)
 CORS(app)
-    
+
+@app.route('/register', methods=['POST'])
+def register():
+    """
+    API to accept email and password, and send the email to SQS.
+    """
+    try:
+        # Parse request data
+        data = request.json
+        email = data.get('email')
+        password = data.get('password')  # Currently not used, but should be validated
+
+        if not email or not password:
+            return jsonify({'error': 'Email and password are required'}), 400
+        
+        # print('email: ',email,' password: ',password)
+
+        # Step 1: Send email ID to SQS
+        response = sqs.send_message(
+            QueueUrl=QUEUE_URL,
+            MessageBody=json.dumps({'email': email})
+        )
+
+        new_uuid = uuid.uuid4()
+
+        # Step 2: Store user details in DynamoDB
+        table = dynamodb.Table(USER_TABLE_NAME)
+        dynamodb_response = table.put_item(
+            Item={
+                'email': email,
+                'password': password,
+                'paper_ids': [],
+                'active': 0,
+                'user_id': str(new_uuid)
+            }
+        )
+
+        return jsonify({
+            'message': 'Email submitted successfully',
+            'messageId': response['MessageId']
+        }), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 # Split text into manageable chunks
 def split_text_with_langchain(text, chunk_size=4000, chunk_overlap=500):
     """

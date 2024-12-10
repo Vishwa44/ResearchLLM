@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import NavBar from "../navbar";
 
 const DotPattern = () => (
   <svg className="absolute w-full h-full" xmlns="http://www.w3.org/2000/svg">
@@ -57,10 +58,7 @@ const SearchingComponent = () => {
     <div className="flex h-screen bg-zinc-900 text-gray-300">
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
-        {/* Navbar */}
-        <div className="h-14 flex items-center px-4 border-b border-zinc-800 bg-zinc-800">
-          <h1 className="text-lg font-semibold">Research Paper Summarizer</h1>
-        </div>
+        <NavBar />
 
         {/* Content Area */}
         <div className="flex-1 relative p-6">
