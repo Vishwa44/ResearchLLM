@@ -55,7 +55,7 @@ app = Flask(__name__)
 CORS(app)
     
 # Split text into manageable chunks
-def split_text_with_langchain(text, chunk_size=7600, chunk_overlap=500):
+def split_text_with_langchain(text, chunk_size=4000, chunk_overlap=500):
     """
     Splits the text into manageable chunks using LangChain's RecursiveCharacterTextSplitter.
     Args:
