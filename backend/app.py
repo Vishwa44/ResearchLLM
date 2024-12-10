@@ -107,7 +107,7 @@ def register():
             Item={
                 'email': email,
                 'password': password,
-                'paper_id': [],
+                'paper_ids': [],
                 'active': 0,
                 'user_id': str(new_uuid)
             }
