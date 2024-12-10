@@ -55,7 +55,7 @@ app = Flask(__name__)
 CORS(app)
     
 # Split text into manageable chunks
-def split_text_with_langchain(text, chunk_size=4096, chunk_overlap=200):
+def split_text_with_langchain(text, chunk_size=4000, chunk_overlap=500):
     """
     Splits the text into manageable chunks using LangChain's RecursiveCharacterTextSplitter.
     Args:
@@ -114,7 +114,7 @@ def save_text_to_temp_file(text, folder_path, original_filename):
     text_file_path = os.path.join(folder_path, f"{cleaned_filename}.txt")
     with open(text_file_path, "w", encoding="utf-8") as file:
         file.write(text)
-    return text_file_path
+    return text_file_path, cleaned_filename
 
 def get_embedding(text, model="text-embedding-3-small"):
     embeddings = []
@@ -183,6 +183,48 @@ def generate_answer(query, matches, model_type):
         print("generation done")
     return response
 
+def s3_upload(file):
+    """
+    Uploads a file to S3 and returns the public URL.
+    """
+    if file:
+        try:
+            # Ensure the temp directory exists
+            temp_dir = "temp/"
+            os.makedirs(temp_dir, exist_ok=True)
+
+            temp_dir = "temp/"
+            os.makedirs(temp_dir, exist_ok=True)
+
+            # Save the uploaded file locally
+            temp_file_path = os.path.join(temp_dir, file.filename)
+            file.save(temp_file_path)  # Save the file locally
+
+            # Upload the saved file to S3
+            s3 = boto3.resource(
+                "s3",
+                aws_access_key_id=AWS_ACCESS_KEY_ID,
+                aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+                region_name=AWS_REGION,
+            )
+            
+            s3.Bucket(AWS_STORAGE_BUCKET_NAME).upload_file(
+                temp_file_path,  # Path of the file saved locally
+                file.filename,  # S3 key (filename in the bucket)
+            )
+
+            # Generate the file's public URL
+            file_url = f"https://{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_REGION}.amazonaws.com/{file.filename}"
+
+            # Clean up: Remove the temporary file
+            os.remove(temp_file_path)
+
+            print(f"File successfully uploaded to S3: {file_url}")
+            return file_url
+        except Exception as e:
+            print(f"Error uploading file to S3: {e}")
+            return ""
+    return ""
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({"status": "OK"}), 200
@@ -218,6 +260,35 @@ def query():
         print(f"Error: {error_trace}")
         return jsonify({"error": str(e), "trace": error_trace}), 500
 
+def get_last_paper_id():
+    try:
+        # Access the table
+        table = dynamodb.Table(TABLE_NAME)
+
+        # Scan the table to get all PaperIds
+        response = table.scan(
+            ProjectionExpression="PaperID"  # Only fetch the PaperID attribute
+        )
+
+        # Extract PaperID values from the scan result
+        paper_ids = [item["PaperID"] for item in response.get("Items", [])]
+
+        # Find the maximum PaperID, which represents the "last" one
+        if paper_ids:
+            last_paper_id = max(paper_ids)
+            return last_paper_id
+        else:
+            return "No PaperID found in the table."
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return None
+
+def batch_upsert(index, vectors, batch_size=100):
+    for i in range(0, len(vectors), batch_size):
+        batch = vectors[i:i+batch_size]
+        index.upsert(vectors=batch)
+    print("Uploaded successfully")
 
 @app.route('/summarize', methods=['POST'])
 def summarize():    
@@ -227,6 +298,7 @@ def summarize():
     Expects a PDF file to be uploaded as a POST request.
     """
     try:
+        table = dynamodb.Table(TABLE_NAME)
         # Check if a file is uploaded
         if 'file' not in request.files:
             return jsonify({"error": "No file uploaded"}), 400
@@ -234,12 +306,44 @@ def summarize():
         file = request.files['file']
         original_filename = file.filename
 
+        # Store in S3
+        s3_link = s3_upload(file)
+
         # # Extract text from the PDF
         text = parse_pdf_to_text(file)
 
         # Optionally save the extracted text to a temporary file
         temp_folder = "/tmp/pdf_texts"  # Define a temporary folder for saving text files
-        temp_file_path = save_text_to_temp_file(text, temp_folder, original_filename)
+        temp_file_path, file_text_name = save_text_to_temp_file(text, temp_folder, original_filename)
+        
+        # Get latest paper ID
+        latest_paper_id = get_last_paper_id()
+        new_paper_id = latest_paper_id + 1
+
+        # chunk + embedding of new file
+        chunks = split_text_with_langchain(text)
+        embeddings = get_embedding(chunks)
+
+        # Store in pinecone
+        pinecone_chunks = []
+        for i, value in enumerate(chunks):
+            temp_dict = {}
+            temp_dict["id"] = "paper_" + str(new_paper_id) + "#chunk_" + str(i)
+            temp_dict["values"] = embeddings[i]                
+            temp_dict["metadata"] = {"paper_id": new_paper_id, "chunk_id": "chunk_" + str(i), "chunk": chunks[i]}
+            pinecone_chunks.append(temp_dict)
+
+        batch_upsert(index, pinecone_chunks)
+
+        # Store in dynamo
+        data_to_add = {
+            "PaperTxtName": file_text_name + ".txt", 
+            "PaperID": int(new_paper_id),  
+            "PaperLink": s3_link,
+            "PaperPDFName": original_filename
+        }
+
+        table.put_item(Item=data_to_add)
 
         query = "Summarize the content clearly and concisely with a maximum word limit of 300 words."
 
@@ -254,16 +358,15 @@ def summarize():
             "stream": False}
         print("generating answer")
         try:
-            # print("test")
+            print("test")
             response = requests.post(LLAMA_URL, json=data, headers=headers)
         except Exception as e:
             print(e)
 
         print("generation done")
-        return jsonify({"message": str("response.json()")}), 200
+        return jsonify({"message": str(response.json())}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 
 @app.route('/addToDynamo', methods=['POST'])
 def addToDynamo():
@@ -288,7 +391,6 @@ def addToDynamo():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 
 @app.route('/getFromDynamo', methods=['POST'])
 def getFromDynamo():
