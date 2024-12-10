@@ -1,15 +1,11 @@
 import os
 import traceback
 import numpy as np
-import random
 import json
 from flask import Flask, request, jsonify
-from sentence_transformers import SentenceTransformer
-from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline, AutoModelForSeq2SeqLM
 from pinecone import Pinecone
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from boto3.dynamodb.conditions import Attr
-import torch
 from flask_cors import CORS  
 from pypdf import PdfReader
 import os
@@ -17,31 +13,28 @@ import re
 import json
 import boto3
 import requests
+from openai import OpenAI
 import uuid
-
-AWS_ACCESS_KEY_ID = "AKIA6ODU6VDBY2U5IAWS"  # Replace with your Access Key
-AWS_SECRET_ACCESS_KEY = "DRweNvCw0jtH3r46tGcvnwiZzB/2X2SQdTr6FN5p"  # Replace with your Secret Key
-AWS_REGION = "us-west-2"  # Replace with your AWS Region
-
-# Initialize SQS client with explicit credentials
-sqs = boto3.client(
-    'sqs',
-    aws_access_key_id=AWS_ACCESS_KEY_ID,
-    aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
-    region_name=AWS_REGION
-)
-
-# Replace with your queue URL
-QUEUE_URL = 'https://sqs.us-west-2.amazonaws.com/992382724291/UserEmailQueue'
+from google.auth.transport.requests import Request
+from google.oauth2.id_token import fetch_id_token
+from together import Together
+import vertexai
+from vertexai.generative_models import GenerativeModel
 
 # Ensure fallback for unsupported operations on MPS
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
-
-# Pinecone credentials
-api_key = "pcsk_bYpHQ_MYJaBXuyz9jvAKrVDCJ9GDWQAS2cPFufcQmgJN8UE6oVzYrMYg3tp4cJ1RV4nVb"
-index_name = "research-paper-index"
-
-TABLE_NAME = "pdf_metadata"  # Replace with your DynamoDB table name
+PINECONE_KEY = os.getenv("PINECONE_KEY")
+PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+AWS_REGION = os.getenv("AWS_REGION")
+TABLE_NAME = os.getenv("TABLE_NAME")
+TOKEN = os.getenv("TOKEN")
+LLAMA_URL = os.getenv("LLAMA_URL")
+BACKEND_DOMAIN = os.getenv("BACKEND_DOMAIN")
+TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
+GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID")
 
 # Initialize DynamoDB Resource
 dynamodb = boto3.resource(
@@ -59,20 +52,30 @@ dynamodb = boto3.resource(
     region_name=AWS_REGION
 )
 
+sqs = boto3.client(
+    'sqs',
+    aws_access_key_id=AWS_ACCESS_KEY_ID,
+    aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+    region_name=AWS_REGION
+)
+# AWS_ACCESS_KEY_ID = "AKIA6ODU6VDBY2U5IAWS"  # Replace with your Access Key
+# AWS_SECRET_ACCESS_KEY = "DRweNvCw0jtH3r46tGcvnwiZzB/2X2SQdTr6FN5p"  # Replace with your Secret Key
+# Replace with your queue URL
+QUEUE_URL = 'https://sqs.us-west-2.amazonaws.com/992382724291/UserEmailQueue'
+
+
 USER_TABLE_NAME = 'research_user_table'
 
 
-pc = Pinecone(api_key=api_key)
-index = pc.Index(index_name)
+pc = Pinecone(api_key=PINECONE_KEY)
+index = pc.Index(PINECONE_INDEX_NAME)
+
+openAIClient = OpenAI(api_key=OPENAI_API_KEY,)
+client = Together(api_key=TOGETHER_API_KEY)
 
 # Initialize Flask app
 app = Flask(__name__)
 CORS(app)
-
-# Load SentenceTransformer for embeddings
-embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
-# embedding_model = SentenceTransformer('jinaai/jina-embeddings-v2-small-en', trust_remote_code=True).cuda()  # Lightweight model for sentence embeddings
-
 
 @app.route('/register', methods=['POST'])
 def register():
@@ -119,31 +122,8 @@ def register():
         return jsonify({'error': str(e)}), 500
 
 
-# Load the summarizer model
-def load_summarizer(model_name="t5-small"):
-    """
-    Load the summarization model pipeline.
-    Args:
-        model_name (str): The name of the Hugging Face model.
-    Returns:
-        summarizer function
-    """
-    if model_name.startswith("t5"):
-        # Use T5 summarizer
-        model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
-
-        def t5_summarizer(text):
-            input_ids = tokenizer.encode(f"summarize: {text}", return_tensors="pt", truncation=True, max_length=512)
-            outputs = model.generate(input_ids, max_length=130, min_length=30, length_penalty=2.0, num_beams=4)
-            return tokenizer.decode(outputs[0], skip_special_tokens=True)
-        
-        return t5_summarizer
-    else:
-        return None
-    
 # Split text into manageable chunks
-def split_text_with_langchain(text, chunk_size=4096, chunk_overlap=200):
+def split_text_with_langchain(text, chunk_size=4000, chunk_overlap=500):
     """
     Splits the text into manageable chunks using LangChain's RecursiveCharacterTextSplitter.
     Args:
@@ -202,78 +182,181 @@ def save_text_to_temp_file(text, folder_path, original_filename):
     text_file_path = os.path.join(folder_path, f"{cleaned_filename}.txt")
     with open(text_file_path, "w", encoding="utf-8") as file:
         file.write(text)
-    return text_file_path
+    return text_file_path, cleaned_filename
 
-# Query Pinecone index
-def query_pinecone(query, top_k=5):
-    query_embedding = embedding_model.encode(query).tolist()
+def get_embedding(text, model="text-embedding-3-small"):
+    embeddings = []
+    for chunk in text: 
+        try:
+            chunk = chunk.page_content.replace("\n", " ")
+            embeddings.append(openAIClient.embeddings.create(input = [chunk], model=model).data[0].embedding)
+        except Exception as e:
+            chunk = chunk.replace("\n", " ")
+            embeddings.append(openAIClient.embeddings.create(input = [chunk], model=model).data[0].embedding)
+    return embeddings
+
+def query_pinecone(query, top_k=10):
+    query_embedding = get_embedding([query])
     results = index.query(vector=query_embedding, top_k=top_k, include_metadata=True)
     return results
 
-# Generate answer using LLaMA
-def generate_answer(query, matches):
+def get_auth_token():
+    auth_request = Request()
+    target_audience = LLAMA_URL
+    id_token = fetch_id_token(auth_request, target_audience)
+    print(f"Getting auth token: {id_token}")
+    return id_token
+
+def generate_answer(query, matches, model_type):
     context = " ".join(
         [match.get("metadata", {}).get("chunk", "") for match in matches if "metadata" in match]
     )
-    input_text = f"Query: {query}\nContext: {context}\n\nBased on the Context please answer the Query\n"
-    token  = "eyJhbGciOiJSUzI1NiIsImtpZCI6IjJjOGEyMGFmN2ZjOThmOTdmNDRiMTQyYjRkNWQwODg0ZWIwOTM3YzQiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJhY2NvdW50cy5nb29nbGUuY29tIiwiYXpwIjoiNjE4MTA0NzA4MDU0LTlyOXMxYzRhbGczNmVybGl1Y2hvOXQ1Mm4zMm42ZGdxLmFwcHMuZ29vZ2xldXNlcmNvbnRlbnQuY29tIiwiYXVkIjoiNjE4MTA0NzA4MDU0LTlyOXMxYzRhbGczNmVybGl1Y2hvOXQ1Mm4zMm42ZGdxLmFwcHMuZ29vZ2xldXNlcmNvbnRlbnQuY29tIiwic3ViIjoiMTEwNjE4MjQ3NDgxMzA0MTY2OTAwIiwiaGQiOiJueXUuZWR1IiwiZW1haWwiOiJ2ZzI1MjNAbnl1LmVkdSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJhdF9oYXNoIjoib1FBTWNscDNmNktPZG5peWFXenN4dyIsIm5iZiI6MTczMzYwODc2NiwiaWF0IjoxNzMzNjA5MDY2LCJleHAiOjE3MzM2MTI2NjYsImp0aSI6ImI5NjcxODRmNWM4YWU0YjAwN2VmMjNmZDQwMjUwNjJjYWQzNmYxMDkifQ.D4lhfC52HkceZrnoXl2sOXmUhwYg-nAbtsV8Ray05xnQwu_d1fiygY9IfrmMNpIjaUs_LwEHXjTh6EuJX1y_OZyCDP8LV3xtGVeVYaIqAhtUoLlq3jO03Zu04zDQ0aeGyFNF3xkcksfWGq3dU-PyFg_WUb2LfNGHD1o1Dj6wm2Iu3ExELr6UCqWxVn9qN28DrG6jYiefY7ucoq4b0jiYHQycxJKpdxSTcQuYxhhXdQ54ft80xMR-tsaD_1ffrSU_1LvTzcayITHRR-42yWpmPtT9eoPjom5mu78bJ40wOFP9o2_UTzF8WQdh06EHJJzNW3-bimdSMNFLzzCWA2ZM2A"
-    llama_url = "https://ollama-llama32-316797979759.us-east4.run.app/api/generate"
+    input_text = f"This is my question: {query}, please answer the question based on the following context: {context}\n\nDo not mention that you have been given context\n"
 
-    headers = {
-    "Authorization": "Bearer "+ token, 
-    "Content-Type": "application/json"}
-    data = {
-        "model": "llama3.2:3b",
-        "prompt": input_text,
-        "stream": False}
-    print("generating answer")
-    response = requests.post(llama_url, json=data, headers=headers)
-    print("generation done")
+    print(input_text)
+
+    if model_type == "llama3.2":
+        auth_token = get_auth_token()
+        print(f"Auth token: {auth_token}")
+        headers = {
+        "Authorization": f"Bearer {auth_token}", 
+        "Content-Type": "application/json"}
+        data = {
+            "model": "llama3.2:3b",
+            "prompt": input_text,
+            "stream": False}
+        print("generating answer")
+        try:
+            response = requests.post(LLAMA_URL, json=data, headers=headers)
+        except Exception as e:
+            print(f"Error: {e}")
+        print("generation done")
+    elif model_type == "llama3.3":
+        responseAPI = client.chat.completions.create(
+        model="meta-llama/Llama-3.3-70B-Instruct-Turbo",
+        messages=[
+                {"role": "system", "content": "You are a helpful assistant for the conducting research that answers questions based on provided context. Don't mention anything about the context when answering"},
+                {"role": "user", "content": input_text}
+            ],
+        stream=False)
+        print("generating answer")
+        response = responseAPI.choices[0].message.content
+        print("generation done")
+    elif model_type == "gemini1.5":
+        vertexai.init(project=GCP_PROJECT_ID, location="us-central1")
+        model = GenerativeModel("gemini-1.5-flash-002")
+        print("generating answer")
+        responseAPI = model.generate_content(input_text)
+        response = responseAPI.candidates[0].content.parts[0].text
+        print("generation done")
     return response
 
-@app.route('/')
-def home():
-    return "Welcome to the AI Query API! Use the `/query` endpoint to interact."
+def s3_upload(file):
+    """
+    Uploads a file to S3 and returns the public URL.
+    """
+    if file:
+        try:
+            # Ensure the temp directory exists
+            temp_dir = "temp/"
+            os.makedirs(temp_dir, exist_ok=True)
 
-@app.route('/favicon.ico')
-def favicon():
-    return '', 204
+            temp_dir = "temp/"
+            os.makedirs(temp_dir, exist_ok=True)
+
+            # Save the uploaded file locally
+            temp_file_path = os.path.join(temp_dir, file.filename)
+            file.save(temp_file_path)  # Save the file locally
+
+            # Upload the saved file to S3
+            s3 = boto3.resource(
+                "s3",
+                aws_access_key_id=AWS_ACCESS_KEY_ID,
+                aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+                region_name=AWS_REGION,
+            )
+            
+            s3.Bucket(AWS_STORAGE_BUCKET_NAME).upload_file(
+                temp_file_path,  # Path of the file saved locally
+                file.filename,  # S3 key (filename in the bucket)
+            )
+
+            # Generate the file's public URL
+            file_url = f"https://{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_REGION}.amazonaws.com/{file.filename}"
+
+            # Clean up: Remove the temporary file
+            os.remove(temp_file_path)
+
+            print(f"File successfully uploaded to S3: {file_url}")
+            return file_url
+        except Exception as e:
+            print(f"Error uploading file to S3: {e}")
+            return ""
+    return ""
+@app.route('/health', methods=['GET'])
+def health():
+    return jsonify({"status": "OK"}), 200
 
 @app.route('/query', methods=['POST'])
 def query():
     try:
-        print('S1')
         data = request.json
-        print(data)
-        print('S2')
         query_text = data['query']
-        
+        model_type = data['model'] 
+        print(f"1: query text: {query_text}, model type:{model_type}")
         pinecone_results = query_pinecone(query_text)
         matches = pinecone_results.get("matches", [])
-        print("fetched context")
         if not matches:
             return jsonify({"answer": "No relevant matches found in the database."})
         
-        
-        
-        paper_ids = [int(match['id'].split("#")[0].split("_")[1]) for match in matches]
-        dynamo_response = requests.post(
-            "http://127.0.0.1:5000/getFromDynamo",  # Replace with the actual URL if hosted elsewhere
-            json={"PaperIDs": paper_ids}
-        )
+        paper_ids = list(set(int(match['id'].split("#")[0].split("_")[1]) for match in matches))[:5]
+        dynamo_response = getPapersFromDynamo(paper_ids)
+        print(f"2: Paper IDs: {paper_ids}")
+        print(f"4: Dynamo Response :{dynamo_response}")
 
-        if dynamo_response.status_code != 200:
-            return jsonify({"error": "Failed to retrieve data from DynamoDB.", "details": dynamo_response.json()}), 500
+        if type(dynamo_response) == str:
+            return jsonify({"error": "Failed to retrieve data from DynamoDB.", "details": dynamo_response}), 500
         
-        dynamo_data = dynamo_response.json()
-        answer = generate_answer(query_text, matches)
-        return jsonify({"result": str(matches), "dynamo_data": dynamo_data, "answer": answer.text})
+        answer = generate_answer(query_text, matches[:3], model_type)
+        if model_type == "llama3.2":
+            answer = json.loads(answer.text)
+            return jsonify({"result": str(matches), "dynamo_data": dynamo_response, "answer": answer['response']})
+        return jsonify({"result": str(matches), "dynamo_data": dynamo_response, "answer": answer})
     except Exception as e:
         print("exception raised")
         error_trace = traceback.format_exc()
         print(f"Error: {error_trace}")
         return jsonify({"error": str(e), "trace": error_trace}), 500
 
+def get_last_paper_id():
+    try:
+        # Access the table
+        table = dynamodb.Table(TABLE_NAME)
+
+        # Scan the table to get all PaperIds
+        response = table.scan(
+            ProjectionExpression="PaperID"  # Only fetch the PaperID attribute
+        )
+
+        # Extract PaperID values from the scan result
+        paper_ids = [item["PaperID"] for item in response.get("Items", [])]
+
+        # Find the maximum PaperID, which represents the "last" one
+        if paper_ids:
+            last_paper_id = max(paper_ids)
+            return last_paper_id
+        else:
+            return "No PaperID found in the table."
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return None
+
+def batch_upsert(index, vectors, batch_size=100):
+    for i in range(0, len(vectors), batch_size):
+        batch = vectors[i:i+batch_size]
+        index.upsert(vectors=batch)
+    print("Uploaded successfully")
 
 @app.route('/summarize', methods=['POST'])
 def summarize():    
@@ -283,32 +366,59 @@ def summarize():
     Expects a PDF file to be uploaded as a POST request.
     """
     try:
+        table = dynamodb.Table(TABLE_NAME)
         # Check if a file is uploaded
-        # if 'file' not in request.files:
-        #     return jsonify({"error": "No file uploaded"}), 400
+        if 'file' not in request.files:
+            return jsonify({"error": "No file uploaded"}), 400
 
-        # file = request.files['file']
-        file = "/Users/siddharthcv/Downloads/courses/Fall 2024/Cloud Computing/project/mapreduce-osdi04.pdf"
-        # original_filename = file.filename
+        file = request.files['file']
+        original_filename = file.filename
+
+        # Store in S3
+        s3_link = s3_upload(file)
 
         # # Extract text from the PDF
         text = parse_pdf_to_text(file)
 
-        # with open('/Users/siddharthcv/Downloads/courses/Fall 2024/Cloud Computing/project/', 'r') as file:
-        #     text = file.read()
-
         # Optionally save the extracted text to a temporary file
-        # temp_folder = "/tmp/pdf_texts"  # Define a temporary folder for saving text files
-        # temp_file_path = save_text_to_temp_file(text, temp_folder, original_filename)
+        temp_folder = "/tmp/pdf_texts"  # Define a temporary folder for saving text files
+        temp_file_path, file_text_name = save_text_to_temp_file(text, temp_folder, original_filename)
+        
+        # Get latest paper ID
+        latest_paper_id = get_last_paper_id()
+        new_paper_id = latest_paper_id + 1
+
+        # chunk + embedding of new file
+        chunks = split_text_with_langchain(text)
+        embeddings = get_embedding(chunks)
+
+        # Store in pinecone
+        pinecone_chunks = []
+        for i, value in enumerate(chunks):
+            temp_dict = {}
+            temp_dict["id"] = "paper_" + str(new_paper_id) + "#chunk_" + str(i)
+            temp_dict["values"] = embeddings[i]                
+            temp_dict["metadata"] = {"paper_id": new_paper_id, "chunk_id": "chunk_" + str(i), "chunk": chunks[i]}
+            pinecone_chunks.append(temp_dict)
+
+        batch_upsert(index, pinecone_chunks)
+
+        # Store in dynamo
+        data_to_add = {
+            "PaperTxtName": file_text_name + ".txt", 
+            "PaperID": int(new_paper_id),  
+            "PaperLink": s3_link,
+            "PaperPDFName": original_filename
+        }
+
+        table.put_item(Item=data_to_add)
 
         query = "Summarize the content clearly and concisely with a maximum word limit of 300 words."
 
         input_text = f"Query: {query}\nContext: {text}\n\nProvide a detailed summary based on the context.\n"
-        token  = "eyJhbGciOiJSUzI1NiIsImtpZCI6IjJjOGEyMGFmN2ZjOThmOTdmNDRiMTQyYjRkNWQwODg0ZWIwOTM3YzQiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJhY2NvdW50cy5nb29nbGUuY29tIiwiYXpwIjoiNjE4MTA0NzA4MDU0LTlyOXMxYzRhbGczNmVybGl1Y2hvOXQ1Mm4zMm42ZGdxLmFwcHMuZ29vZ2xldXNlcmNvbnRlbnQuY29tIiwiYXVkIjoiNjE4MTA0NzA4MDU0LTlyOXMxYzRhbGczNmVybGl1Y2hvOXQ1Mm4zMm42ZGdxLmFwcHMuZ29vZ2xldXNlcmNvbnRlbnQuY29tIiwic3ViIjoiMTEwNjE4MjQ3NDgxMzA0MTY2OTAwIiwiaGQiOiJueXUuZWR1IiwiZW1haWwiOiJ2ZzI1MjNAbnl1LmVkdSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJhdF9oYXNoIjoiWHp1aDY4dDRJNk12dDUxMHFnblJoUSIsIm5iZiI6MTczMzYxNzQwMywiaWF0IjoxNzMzNjE3NzAzLCJleHAiOjE3MzM2MjEzMDMsImp0aSI6ImJmZDY4NGI2MmI4YzFlMmM0MDY1OTE3ZGNhMDM2M2UxNjYxNzBhMzYifQ.AVQEcMLWe-Akbj2QK71wYl41uXx4vCbdo_yBTmQ3JV3GDeXUq5sl41fRFnWn3w6glpTJMQ4E_rDVOSHy0Ad3uMsnm8Holv1smyD5lG9yL1T5s-4K-CvkzO25Z-GytK_-NomfrYXIIr3xa5no1SqCnBRK232pO4gZbUKtAZFVMpLD4W49Wv-67C26SAUXiGRA_lMYJ8gDYzruYynNVUJRQaRoriw55Np0DN-PFp6p3_4Und5iPSU5zD_sX1JPqwhemJIg88MiFAFHfN-8ODXt8ch9pe2iztu-b6VM2sHIFBwy0hA4sXEfjZ_D5g0EMpQO42hF_bD_FtbI9ZaGHM8PLQ"
-        llama_url = "https://ollama-llama32-316797979759.us-east4.run.app/api/generate"
 
         headers = {
-        "Authorization": "Bearer "+ token, 
+        "Authorization": "Bearer "+ TOKEN, 
         "Content-Type": "application/json"}
         data = {
             "model": "llama3.2:3b",
@@ -316,44 +426,19 @@ def summarize():
             "stream": False}
         print("generating answer")
         try:
-            response = requests.post(llama_url, json=data, headers=headers)
+            print("test")
+            response = requests.post(LLAMA_URL, json=data, headers=headers)
         except Exception as e:
             print(e)
 
         print("generation done")
-        return jsonify({"error": str(response.json())}), 200
-
-    #     # Load summarization model
-    #     model_name = "t5-small"  # Default model
-    #     summarizer = load_summarizer(model_name)
-
-
-    #     if summarizer is None:
-    #         return jsonify({"error": "Model not supported"}), 500
-    #     # Split text into chunks
-    #     chunks = split_text_with_langchain(text, chunk_size=4096, chunk_overlap=200)
-
-    #     # Summarize each chunk
-    #     summaries = []
-    #     for chunk in chunks:
-    #         try:
-    #             summary = summarizer(chunk)
-    #             summaries.append(chunk)
-    #         except Exception as e:
-    #             return jsonify({"error": f"Error summarizing chunk: {e}"}), 500
-
-    #     # Combine all summaries
-    #     final_summary = " ".join(summaries)
-    #     return jsonify({"summary": final_summary, "temp_file_path": temp_file_path})
+        return jsonify({"message": str(response.json())}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-
 
 @app.route('/addToDynamo', methods=['POST'])
 def addToDynamo():
     try:
-
         with open('pdf_metadata.json', 'r') as file:
             pdf_metadata = json.load(file)
 
@@ -375,17 +460,32 @@ def addToDynamo():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
 @app.route('/getFromDynamo', methods=['POST'])
 def getFromDynamo():
     try:
         request_data = request.get_json()
         paper_ids = request_data.get("PaperIDs")
+        results = getPapersFromDynamo(paper_ids)
+
+        if type(results) == str:
+            return jsonify({"error": "Failed to retrieve data from DynamoDB.", "details": results}), 500
+
+        return jsonify({"data": results}), 200
+
+    except Exception as e:
+        print(f"2.5: Exception: {e}")
+        return jsonify({"error": str(e)}), 500
+
+def getPapersFromDynamo(paper_ids):
+    try:
+        print(f"2.1: Paper IDs: {paper_ids}")
 
         if not paper_ids or not isinstance(paper_ids, list):
-            return jsonify({"error": "Invalid input. Please provide a list of PaperIDs."}), 400
+            print(f"2.2: If statement")
+            return "Invalid input. Please provide a list of PaperIDs."
 
         table = dynamodb.Table(TABLE_NAME)
+        print(f"2.3: Table name: {table}")
 
         results = []
         for paper_id in paper_ids:
@@ -395,12 +495,13 @@ def getFromDynamo():
 
             if 'Items' in response and response['Items']:
                 results.extend(response['Items'])
+        print(f"2.4: Results: {results}")
 
-        return jsonify({"data": results}), 200
+        return results
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
+        print(f"2.5: Exception: {e}")
+        return str(e)
 
 if __name__ == '__main__':
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5050, debug=True)

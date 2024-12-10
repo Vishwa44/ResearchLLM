@@ -28,6 +28,7 @@ const DotPattern = () => (
 const SearchingComponent = () => {
   const [searchText, setSearchText] = useState("");
   const [resultText, setResultText] = useState("Your summarized text will appear here...");
+  const [dynamoData, setDynamoData] = useState([]);
 
   const handleSearch = async (e) => {
     e.preventDefault();
@@ -46,12 +47,12 @@ const SearchingComponent = () => {
       }
 
       const data = await response.json();
-      setResultText(data.result || "No results found."); 
+      setResultText(data.answer || "No results found."); 
+      setDynamoData(data.dynamo_data.data || []); // Extract and set dynamo_data
     } catch (error) {
       setResultText(`Error: ${error.message}`);
     }
   };
-
 
   return (
     <div className="flex h-screen bg-zinc-900 text-gray-300">
@@ -90,6 +91,31 @@ const SearchingComponent = () => {
             <div className="bg-zinc-800 p-6 rounded-lg shadow-md w-full">
               <h2 className="text-lg font-semibold mb-4">Results</h2>
               <p className="text-sm text-gray-400">{resultText}</p>
+            </div>
+
+            {/* Dynamo Data Cards */}
+            <div className="w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {dynamoData.map((item, index) => (
+                <div
+                  key={index}
+                  className="bg-zinc-800 p-4 rounded-lg shadow-md flex flex-col items-start"
+                >
+                  <h3 className="text-md font-semibold mb-2 text-white">
+                    {item.PaperPDFName.split(".")[0]}
+                  </h3>
+                  <p className="text-sm text-gray-400 mb-2">
+                    Paper ID: {item.PaperID}
+                  </p>
+                  <a
+                    href={item.PaperLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-indigo-400 hover:underline text-sm"
+                  >
+                    View PDF
+                  </a>
+                </div>
+              ))}
             </div>
           </div>
         </div>
