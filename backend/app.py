@@ -12,6 +12,7 @@ import os
 import re
 import json
 import boto3
+from botocore.exceptions import ClientError
 import requests
 from openai import OpenAI
 import uuid
@@ -23,18 +24,35 @@ from vertexai.generative_models import GenerativeModel
 
 # Ensure fallback for unsupported operations on MPS
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
-PINECONE_KEY = os.getenv("PINECONE_KEY")
-PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
-AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
-AWS_REGION = os.getenv("AWS_REGION")
-TABLE_NAME = os.getenv("TABLE_NAME")
-TOKEN = os.getenv("TOKEN")
-LLAMA_URL = os.getenv("LLAMA_URL")
-BACKEND_DOMAIN = os.getenv("BACKEND_DOMAIN")
-TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
-GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID")
+# PINECONE_KEY = os.getenv("PINECONE_KEY")
+# PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME")
+# OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+# AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
+# AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+# AWS_REGION = os.getenv("AWS_REGION")
+# TABLE_NAME = os.getenv("TABLE_NAME")
+# TOKEN = os.getenv("TOKEN")
+# LLAMA_URL = os.getenv("LLAMA_URL")
+# BACKEND_DOMAIN = os.getenv("BACKEND_DOMAIN")
+# TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
+# GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID")
+
+
+PINECONE_KEY = "pcsk_733LpQ_3vUPKxHKBvL21VL4JaZVMoW1XxF2xFyWFZDx5brAgnbrQ5UVoySp7ad26QU416D" #Updated to access the openAI embedding
+PINECONE_INDEX_NAME = "v2-research-paper-index" #Pinecone index name
+OPENAI_API_KEY="sk-cZPrWqOChvs4ZVzmnN86oimk0uame9WaV07CVLKIWzT3BlbkFJdoBT2V24zTFu_mUzWOnwNqv-qkgnQPtcB3ErD3vw8A" #OpenAI api key
+AWS_ACCESS_KEY_ID = "AKIA6ODU6VDBSWRFQJ6F"  # Replace with your Access Key
+AWS_SECRET_ACCESS_KEY = "gTdXAvAkOcAhBU6UIbQWehkv1L/N/WtNB/4MoPgW"  # Replace with your Secret Key
+AWS_REGION = "us-west-2"  # Replace with your AWS Region
+TABLE_NAME = "pdf_metadata"  # Replace with your DynamoDB table name
+TOKEN  = "eyJhbGciOiJSUzI1NiIsImtpZCI6IjJjOGEyMGFmN2ZjOThmOTdmNDRiMTQyYjRkNWQwODg0ZWIwOTM3YzQiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJhY2NvdW50cy5nb29nbGUuY29tIiwiYXpwIjoiNjE4MTA0NzA4MDU0LTlyOXMxYzRhbGczNmVybGl1Y2hvOXQ1Mm4zMm42ZGdxLmFwcHMuZ29vZ2xldXNlcmNvbnRlbnQuY29tIiwiYXVkIjoiNjE4MTA0NzA4MDU0LTlyOXMxYzRhbGczNmVybGl1Y2hvOXQ1Mm4zMm42ZGdxLmFwcHMuZ29vZ2xldXNlcmNvbnRlbnQuY29tIiwic3ViIjoiMTEwNjE4MjQ3NDgxMzA0MTY2OTAwIiwiaGQiOiJueXUuZWR1IiwiZW1haWwiOiJ2ZzI1MjNAbnl1LmVkdSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJhdF9oYXNoIjoib1FBTWNscDNmNktPZG5peWFXenN4dyIsIm5iZiI6MTczMzYwODc2NiwiaWF0IjoxNzMzNjA5MDY2LCJleHAiOjE3MzM2MTI2NjYsImp0aSI6ImI5NjcxODRmNWM4YWU0YjAwN2VmMjNmZDQwMjUwNjJjYWQzNmYxMDkifQ.D4lhfC52HkceZrnoXl2sOXmUhwYg-nAbtsV8Ray05xnQwu_d1fiygY9IfrmMNpIjaUs_LwEHXjTh6EuJX1y_OZyCDP8LV3xtGVeVYaIqAhtUoLlq3jO03Zu04zDQ0aeGyFNF3xkcksfWGq3dU-PyFg_WUb2LfNGHD1o1Dj6wm2Iu3ExELr6UCqWxVn9qN28DrG6jYiefY7ucoq4b0jiYHQycxJKpdxSTcQuYxhhXdQ54ft80xMR-tsaD_1ffrSU_1LvTzcayITHRR-42yWpmPtT9eoPjom5mu78bJ40wOFP9o2_UTzF8WQdh06EHJJzNW3-bimdSMNFLzzCWA2ZM2A"
+LLAMA_URL = "https://ollama-llama32-316797979759.us-east4.run.app/api/generate"
+AWS_STORAGE_BUCKET_NAME = "research-llm-pdfs"
+TOGETHER_API_KEY = "7da8c3e879a9b326564bca00116aaf5845eabd3cd360ad38c18c8bcfec7c3b2d"
+GCP_PROJECT_ID = "lofty-cabinet-443918-a9"
+
+
+
 
 # Initialize DynamoDB Resource
 dynamodb = boto3.resource(
@@ -107,7 +125,7 @@ def register():
             Item={
                 'email': email,
                 'password': password,
-                'paper_ids': [],
+                'paper_id': [],
                 'active': 0,
                 'user_id': str(new_uuid)
             }
@@ -502,6 +520,56 @@ def getPapersFromDynamo(paper_ids):
     except Exception as e:
         print(f"2.5: Exception: {e}")
         return str(e)
+
+@app.route('/getPapers', methods=['POST'])
+def get_papers():
+    try:
+        request_data = request.get_json()
+        user_uuid = request_data.get('uuid')
+
+        if not user_uuid:
+            return jsonify({"error": "UUID is required"}), 400
+
+        table = dynamodb.Table(USER_TABLE_NAME)
+        response = table.scan(
+            FilterExpression="user_id = :uuid",
+            ExpressionAttributeValues={":uuid": user_uuid}
+        )
+
+        if 'Items' not in response or not response['Items']:
+            return jsonify([])  
+        
+        user_data = response['Items'][0]
+
+        paper_ids = user_data.get("paper_id", [])
+
+        if not paper_ids:
+            return jsonify([])
+        
+        papers = []
+        for paper_id in paper_ids:
+            try:
+                paper_table = dynamodb.Table(TABLE_NAME)
+                paper_response = paper_table.get_item(Key={"paper_id": int(paper_id)})
+                if 'Items' in paper_response:
+                    papers.append({
+                        "id": paper_id,
+                        "name": paper_response['Items'][0].get("PaperPDFName", f"Paper_{paper_id}.pdf"),
+                        "type": paper_response['Items'][0].get("type", "pdf"),
+                        # "metadata": paper_response['Item'].get("metadata", {})
+                    })
+            except ClientError as e:
+                print(f"Error fetching paper {paper_id}: {e.response['Error']['Message']}")
+
+
+        return jsonify(papers), 200
+
+    except ClientError as e:
+        print(f"ClientError: {e.response['Error']['Message']}")
+        return jsonify({"error": "Error fetching data from DynamoDB"}), 500
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=5050, debug=True)

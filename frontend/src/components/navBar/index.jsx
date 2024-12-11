@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Menu, Search, Bell, User, MessageSquare, FileText } from "lucide-react";
 import { Link } from "react-router-dom";
 
@@ -9,6 +9,13 @@ const NavBar = ({ toggleSidebar, onSearchClick, onNotificationsClick, onProfileC
     password: "",
     confirmPassword: "",
   });
+  const [selectedModel, setSelectedModel] = useState("llama3.2");
+
+  useEffect(() => {
+    const storedModel = localStorage.getItem("selectedModel") || "llama3.2";
+    setSelectedModel(storedModel);
+    localStorage.setItem("selectedModel", storedModel);
+  }, []);
 
   const openModal = () => setIsModalOpen(true);
   const closeModal = () => setIsModalOpen(false);
@@ -26,6 +33,12 @@ const NavBar = ({ toggleSidebar, onSearchClick, onNotificationsClick, onProfileC
     }
     alert("Login/Register successful!");
     closeModal();
+  };
+
+  const handleModelChange = (e) => {
+    const newModel = e.target.value;
+    setSelectedModel(newModel);
+    localStorage.setItem("selectedModel", newModel);
   };
 
   return (
@@ -53,6 +66,17 @@ const NavBar = ({ toggleSidebar, onSearchClick, onNotificationsClick, onProfileC
 
         {/* Right Section */}
         <div className="ml-auto flex items-center gap-4">
+          {/* Dropdown */}
+          <select
+            value={selectedModel}
+            onChange={handleModelChange}
+            className="bg-zinc-900 text-gray-300 border border-zinc-700 rounded p-2"
+          >
+            <option value="llama3.2">llama3.2</option>
+            <option value="llama3.3">llama3.3</option>
+            <option value="gemini1.5">gemini1.5</option>
+          </select>
+
           <Link to="/search" className="hover:text-gray-200 text-gray-300">
             <FileText className="inline-block w-5 h-5 mr-1" />
             Query
@@ -68,30 +92,6 @@ const NavBar = ({ toggleSidebar, onSearchClick, onNotificationsClick, onProfileC
             className="hover:bg-zinc-800 rounded p-2 text-gray-300"
           >
             Login
-          </button>
-
-          {/* Search Icon */}
-          <button
-            onClick={onSearchClick}
-            className="hover:bg-zinc-800 rounded p-2"
-          >
-            <Search className="w-5 h-5 text-gray-300" />
-          </button>
-
-          {/* Notifications Icon */}
-          <button
-            onClick={onNotificationsClick}
-            className="hover:bg-zinc-800 rounded p-2"
-          >
-            <Bell className="w-5 h-5 text-gray-300" />
-          </button>
-
-          {/* Profile Icon */}
-          <button
-            onClick={onProfileClick}
-            className="hover:bg-zinc-800 rounded p-2"
-          >
-            <User className="w-5 h-5 text-gray-300" />
           </button>
         </div>
       </div>
