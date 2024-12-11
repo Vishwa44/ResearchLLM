@@ -24,32 +24,18 @@ from vertexai.generative_models import GenerativeModel
 
 # Ensure fallback for unsupported operations on MPS
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
-# PINECONE_KEY = os.getenv("PINECONE_KEY")
-# PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME")
-# OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-# AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
-# AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
-# AWS_REGION = os.getenv("AWS_REGION")
-# TABLE_NAME = os.getenv("TABLE_NAME")
-# TOKEN = os.getenv("TOKEN")
-# LLAMA_URL = os.getenv("LLAMA_URL")
-# BACKEND_DOMAIN = os.getenv("BACKEND_DOMAIN")
-# TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
-# GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID")
-
-
-PINECONE_KEY = "pcsk_733LpQ_3vUPKxHKBvL21VL4JaZVMoW1XxF2xFyWFZDx5brAgnbrQ5UVoySp7ad26QU416D" #Updated to access the openAI embedding
-PINECONE_INDEX_NAME = "v2-research-paper-index" #Pinecone index name
-OPENAI_API_KEY="sk-cZPrWqOChvs4ZVzmnN86oimk0uame9WaV07CVLKIWzT3BlbkFJdoBT2V24zTFu_mUzWOnwNqv-qkgnQPtcB3ErD3vw8A" #OpenAI api key
-AWS_ACCESS_KEY_ID = "AKIA6ODU6VDBSWRFQJ6F"  # Replace with your Access Key
-AWS_SECRET_ACCESS_KEY = "gTdXAvAkOcAhBU6UIbQWehkv1L/N/WtNB/4MoPgW"  # Replace with your Secret Key
-AWS_REGION = "us-west-2"  # Replace with your AWS Region
-TABLE_NAME = "pdf_metadata"  # Replace with your DynamoDB table name
-TOKEN  = "eyJhbGciOiJSUzI1NiIsImtpZCI6IjJjOGEyMGFmN2ZjOThmOTdmNDRiMTQyYjRkNWQwODg0ZWIwOTM3YzQiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJhY2NvdW50cy5nb29nbGUuY29tIiwiYXpwIjoiNjE4MTA0NzA4MDU0LTlyOXMxYzRhbGczNmVybGl1Y2hvOXQ1Mm4zMm42ZGdxLmFwcHMuZ29vZ2xldXNlcmNvbnRlbnQuY29tIiwiYXVkIjoiNjE4MTA0NzA4MDU0LTlyOXMxYzRhbGczNmVybGl1Y2hvOXQ1Mm4zMm42ZGdxLmFwcHMuZ29vZ2xldXNlcmNvbnRlbnQuY29tIiwic3ViIjoiMTEwNjE4MjQ3NDgxMzA0MTY2OTAwIiwiaGQiOiJueXUuZWR1IiwiZW1haWwiOiJ2ZzI1MjNAbnl1LmVkdSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJhdF9oYXNoIjoib1FBTWNscDNmNktPZG5peWFXenN4dyIsIm5iZiI6MTczMzYwODc2NiwiaWF0IjoxNzMzNjA5MDY2LCJleHAiOjE3MzM2MTI2NjYsImp0aSI6ImI5NjcxODRmNWM4YWU0YjAwN2VmMjNmZDQwMjUwNjJjYWQzNmYxMDkifQ.D4lhfC52HkceZrnoXl2sOXmUhwYg-nAbtsV8Ray05xnQwu_d1fiygY9IfrmMNpIjaUs_LwEHXjTh6EuJX1y_OZyCDP8LV3xtGVeVYaIqAhtUoLlq3jO03Zu04zDQ0aeGyFNF3xkcksfWGq3dU-PyFg_WUb2LfNGHD1o1Dj6wm2Iu3ExELr6UCqWxVn9qN28DrG6jYiefY7ucoq4b0jiYHQycxJKpdxSTcQuYxhhXdQ54ft80xMR-tsaD_1ffrSU_1LvTzcayITHRR-42yWpmPtT9eoPjom5mu78bJ40wOFP9o2_UTzF8WQdh06EHJJzNW3-bimdSMNFLzzCWA2ZM2A"
-LLAMA_URL = "https://ollama-llama32-316797979759.us-east4.run.app/api/generate"
-AWS_STORAGE_BUCKET_NAME = "research-llm-pdfs"
-TOGETHER_API_KEY = "7da8c3e879a9b326564bca00116aaf5845eabd3cd360ad38c18c8bcfec7c3b2d"
-GCP_PROJECT_ID = "lofty-cabinet-443918-a9"
+PINECONE_KEY = os.getenv("PINECONE_KEY")
+PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+AWS_REGION = os.getenv("AWS_REGION")
+TABLE_NAME = os.getenv("TABLE_NAME")
+TOKEN = os.getenv("TOKEN")
+LLAMA_URL = os.getenv("LLAMA_URL")
+BACKEND_DOMAIN = os.getenv("BACKEND_DOMAIN")
+TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
+GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID")
 
 
 
@@ -213,9 +199,21 @@ def get_embedding(text, model="text-embedding-3-small"):
             embeddings.append(openAIClient.embeddings.create(input = [chunk], model=model).data[0].embedding)
     return embeddings
 
-def query_pinecone(query, top_k=10):
+def query_pinecone(query, top_k=10, paper_id=None):
     query_embedding = get_embedding([query])
-    results = index.query(vector=query_embedding, top_k=top_k, include_metadata=True)
+    
+    # This will be called from the /notebook page with a paper id for querying
+    # If paper_id is None, then we will query ALL the papers
+    filter_condition = None
+    if paper_id:
+        filter_condition = {"paper_id": "paper_"+str(paper_id)} 
+
+    results = index.query(
+        vector=query_embedding,
+        top_k=top_k,
+        include_metadata=True,
+        filter=filter_condition
+    )
     return results
 
 def get_auth_token():
@@ -320,9 +318,10 @@ def query():
     try:
         data = request.json
         query_text = data['query']
-        model_type = data['model'] 
+        model_type = data.get('model', "llama3.2")
+        paper_id = data.get("file_id", None)
         print(f"1: query text: {query_text}, model type:{model_type}")
-        pinecone_results = query_pinecone(query_text)
+        pinecone_results = query_pinecone(query_text, 10, paper_id)
         matches = pinecone_results.get("matches", [])
         if not matches:
             return jsonify({"answer": "No relevant matches found in the database."})
@@ -521,6 +520,7 @@ def getPapersFromDynamo(paper_ids):
         print(f"2.5: Exception: {e}")
         return str(e)
 
+
 @app.route('/getPapers', methods=['POST'])
 def get_papers():
     try:
@@ -554,8 +554,8 @@ def get_papers():
                 if 'Items' in paper_response:
                     papers.append({
                         "id": paper_id,
-                        "name": paper_response['Items'][0].get("PaperPDFName", f"Paper_{paper_id}.pdf"),
-                        "type": paper_response['Items'][0].get("type", "pdf"),
+                        "name": paper_response['Item'].get("PaperPDFName", f"Paper_{paper_id}.pdf"),
+                        "type": paper_response['Item'].get("type", "pdf"),
                         # "metadata": paper_response['Item'].get("metadata", {})
                     })
             except ClientError as e:

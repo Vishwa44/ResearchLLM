@@ -119,6 +119,7 @@ const NotebookInterface = () => {
     try {
       const payload = {
         file_id: selectedSource.id, // Use the file ID
+        query: searchText,
         model: selectedModel, // Use the selected model
       };
 
