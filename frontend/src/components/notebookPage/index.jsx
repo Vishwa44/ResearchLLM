@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Menu, FileText } from "lucide-react";
 import NavBar from "../navbar";
+import toast from "react-hot-toast";
 
 const DotPattern = () => (
   <svg className="absolute w-full h-full" xmlns="http://www.w3.org/2000/svg">
@@ -35,27 +36,26 @@ const NotebookInterface = () => {
 
   // Fetch papers from the backend
   const fetchPapers = async () => {
-    const userUUID = "user-123"; // Replace this with the actual user UUID
+    const token = localStorage.getItem("token"); // Replace this with the actual user UUID
     try {
       const response = await fetch("http://127.0.0.1:5000/getPapers", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ uuid: userUUID }), // Send the UUID in the request body
+        body: JSON.stringify({ "token": token }), // Send the UUID in the request body
       });
-  
+
       if (!response.ok) {
         throw new Error("Failed to fetch papers");
       }
-  
+
       const data = await response.json();
       setSources(data); // Update sources with the fetched data
     } catch (error) {
       console.error("Error fetching papers:", error.message);
     }
   };
-  
 
   useEffect(() => {
     fetchPapers(); // Fetch papers when the component mounts
@@ -97,20 +97,23 @@ const NotebookInterface = () => {
       setSources([...sources, newSource]);
       setSearchText("");
       setResultText(data.message || "No summary available.");
-      alert("File uploaded successfully!");
+      toast.success("File uploaded successfully!");
     } catch (error) {
       console.error("Upload error:", error);
-      alert(`Error: ${error.message}`);
+      toast.error(`Error: ${error.message}`);
     }
   };
-
 
   const handleSearch = async (e) => {
     e.preventDefault();
 
-    const selectedSource = sources.find((source) => source.id === selectedSourceId);
+    const selectedSource = sources.find(
+      (source) => source.id === selectedSourceId
+    );
     if (!selectedSource) {
-      alert("Please select a source to summarize.");
+      toast("Please select a source to summarize.", {
+        icon: "⚠️",
+      });
       return;
     }
 
@@ -136,11 +139,11 @@ const NotebookInterface = () => {
       }
 
       const data = await response.json();
-      alert("Query fetched successfully!");
+      toast.success("Query fetched successfully!");
       setSearchText("");
       setResultText(data.summary || "No summary available.");
     } catch (error) {
-      alert(`Error: ${error.message}`);
+      toast.error(`Error: ${error.message}`);
     }
   };
 
@@ -178,14 +181,15 @@ const NotebookInterface = () => {
                 <span>Sources</span>
               </div>
               <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-zinc-800 border border-zinc-700">
-                <label htmlFor="file-upload" className="text-lg">+</label>
+                <label htmlFor="file-upload" className="text-lg">
+                  +
+                </label>
                 <input
                   id="file-upload"
                   type="file"
                   onChange={handleFileUpload}
                   className="hidden"
                 />
-
               </button>
             </div>
 
@@ -205,9 +209,10 @@ const NotebookInterface = () => {
                   <div
                     className={`
                     w-4 h-4 rounded-full border
-                    ${selectedSourceId === source.id
-                      ? "border-blue-500 bg-blue-500"
-                      : "border-zinc-600"
+                    ${
+                      selectedSourceId === source.id
+                        ? "border-blue-500 bg-blue-500"
+                        : "border-zinc-600"
                     }
                     transition-colors duration-200
                   `}
@@ -222,7 +227,6 @@ const NotebookInterface = () => {
               </div>
             ))}
           </div>
-          
         ) : (
           <div className="flex flex-col items-center pt-4 gap-4">
             <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-zinc-800 border border-zinc-700">
@@ -241,11 +245,13 @@ const NotebookInterface = () => {
         <div className="flex-1 relative flex items-center justify-center">
           <DotPattern />
           <div className="relative text-zinc-500">
-            {sources.length === 0
-              ? "Add source to search"
-              : searchResult.length > 0
-              ? <div>{searchResult}</div>
-              : "Add prompt to search through the selected source"}
+            {sources.length === 0 ? (
+              "Add source to search"
+            ) : searchResult.length > 0 ? (
+              <div>{searchResult}</div>
+            ) : (
+              "Add prompt to search through the selected source"
+            )}
           </div>
         </div>
         <div className="p-4 border-t border-zinc-800">
@@ -261,6 +267,7 @@ const NotebookInterface = () => {
               <button
                 onClick={handleSearch}
                 className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-md bg-blue-500 hover:bg-blue-600"
+                disabled={searchText?.length ? false : true}
               >
                 <svg
                   className="w-4 h-4 rotate-90"

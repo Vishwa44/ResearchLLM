@@ -584,8 +584,9 @@ def getPapersFromDynamo(paper_ids):
 @app.route('/getPapers', methods=['POST'])
 def get_papers():
     try:
-        request_data = request.get_json()
-        user_uuid = request_data.get('uuid')
+        token = request.get_json()
+        decoded_payload = jwt.decode(token["token"], SECRET, algorithms=["HS256"])
+        user_uuid = decoded_payload.get('uuid')
 
         if not user_uuid:
             return jsonify({"error": "UUID is required"}), 400
