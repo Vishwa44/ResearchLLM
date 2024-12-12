@@ -12,6 +12,9 @@ import os
 import re
 import json
 import boto3
+import jwt
+import datetime
+import hashlib
 from botocore.exceptions import ClientError
 import requests
 from openai import OpenAI
@@ -21,6 +24,7 @@ from google.oauth2.id_token import fetch_id_token
 from together import Together
 import vertexai
 from vertexai.generative_models import GenerativeModel
+from boto3.dynamodb.conditions import Key, Attr
 
 # Ensure fallback for unsupported operations on MPS
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
@@ -36,6 +40,8 @@ LLAMA_URL = os.getenv("LLAMA_URL")
 BACKEND_DOMAIN = os.getenv("BACKEND_DOMAIN")
 TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
 GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID")
+SALT = "A VERY STRONG SALT"
+SECRET="A VERY SECURE SECRET"
 
 
 
@@ -95,7 +101,7 @@ def register():
         if not email or not password:
             return jsonify({'error': 'Email and password are required'}), 400
         
-        # print('email: ',email,' password: ',password)
+        hashed_password = hashlib.sha256((password + SALT).encode('utf-8')).hexdigest()
 
         # Step 1: Send email ID to SQS
         response = sqs.send_message(
@@ -110,7 +116,7 @@ def register():
         dynamodb_response = table.put_item(
             Item={
                 'email': email,
-                'password': password,
+                'password': hashed_password,
                 'paper_id': [],
                 'active': 0,
                 'user_id': str(new_uuid)
@@ -124,6 +130,60 @@ def register():
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@app.route("/login", methods=["POST"])
+def login():
+    """
+    API to accept email and password, validate user details from DynamoDB, 
+    and handle different cases such as non-existent user, invalid password, 
+    or inactive account.
+    """
+    try:
+        # Parse request data
+        data = request.json
+        email = data.get('email')
+        password = data.get('password')
+
+        # Validate input
+        if not email or not password:
+            return jsonify({'error': 'Email and password are required'}), 400
+
+        # Access DynamoDB table
+        table = dynamodb.Table(USER_TABLE_NAME)
+        dynamodb_response = table.query(
+            KeyConditionExpression=Key('email').eq(email)
+        )
+
+        # Check if the user exists
+        if not dynamodb_response.get('Items'):
+            return jsonify({'error': 'User does not exist'}), 404
+
+        user_data = dynamodb_response['Items'][0]  # Assuming email is unique
+
+        hashed_password = hashlib.sha256((password + SALT).encode('utf-8')).hexdigest()
+        
+        # Validate password
+        if user_data.get('password') != hashed_password:  # Ensure proper hashing in production
+            return jsonify({'error': 'Invalid password'}), 401
+
+        # Check if the account is active
+        if user_data.get('active') != 1:
+            return jsonify({'error': 'Account not activated yet, please activate'}), 403
+
+        payload = {
+            'email': email,
+            'uuid': user_data.get('user_id'),  # Assuming 'user_id' is the UUID
+            'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=24)  # Token expires in 24 hours
+        }
+        token = jwt.encode(payload, SECRET, algorithm='HS256')
+
+        # Successful login
+        return jsonify({'message': 'Login successful', 'token': token}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
 
 # Split text into manageable chunks
