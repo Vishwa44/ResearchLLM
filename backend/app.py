@@ -12,6 +12,7 @@ import os
 import re
 import json
 import boto3
+import hashlib
 from botocore.exceptions import ClientError
 import requests
 from openai import OpenAI
@@ -36,7 +37,7 @@ LLAMA_URL = os.getenv("LLAMA_URL")
 BACKEND_DOMAIN = os.getenv("BACKEND_DOMAIN")
 TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
 GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID")
-
+SALT = "A VERY STRONG SALT"
 
 
 
@@ -124,6 +125,43 @@ def register():
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+
+@app.route("/login", methods=["POST"])
+def login():
+    """
+    API to accept email and password, and send the email to SQS.
+    """
+    try:
+        # Parse request data
+        data = request.json
+        email = data.get('email')
+        password = data.get('password')  # Currently not used, but should be validated
+
+        if not email or not password:
+            return jsonify({'error': 'Email and password are required'}), 400
+        
+        # Step 2: Store user details in DynamoDB
+        table = dynamodb.Table(USER_TABLE_NAME)
+        dynamodb_response = table.get_item(
+            Key={
+                'email': email
+            }
+        )
+
+        if 'Item' in dynamodb_response:
+            user_data = dynamodb_response['Item']
+            # Process the user data as needed
+            return jsonify({'message': 'User found', 'user': user_data}), 200
+        else:
+            return jsonify({'error': 'User not found'}), 404
+
+        
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
 
 # Split text into manageable chunks
