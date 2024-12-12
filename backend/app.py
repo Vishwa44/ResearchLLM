@@ -12,6 +12,8 @@ import os
 import re
 import json
 import boto3
+import jwt
+import datetime
 import hashlib
 from botocore.exceptions import ClientError
 import requests
@@ -39,6 +41,8 @@ BACKEND_DOMAIN = os.getenv("BACKEND_DOMAIN")
 TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
 GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID")
 SALT = "A VERY STRONG SALT"
+SECRET="A VERY SECURE SECRET"
+
 
 
 
@@ -97,7 +101,7 @@ def register():
         if not email or not password:
             return jsonify({'error': 'Email and password are required'}), 400
         
-        # print('email: ',email,' password: ',password)
+        hashed_password = hashlib.sha256((password + SALT).encode('utf-8')).hexdigest()
 
         # Step 1: Send email ID to SQS
         response = sqs.send_message(
@@ -112,7 +116,7 @@ def register():
         dynamodb_response = table.put_item(
             Item={
                 'email': email,
-                'password': password,
+                'password': hashed_password,
                 'paper_id': [],
                 'active': 0,
                 'user_id': str(new_uuid)
@@ -126,7 +130,6 @@ def register():
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
 
 
 @app.route("/login", methods=["POST"])
@@ -158,16 +161,25 @@ def login():
 
         user_data = dynamodb_response['Items'][0]  # Assuming email is unique
 
+        hashed_password = hashlib.sha256((password + SALT).encode('utf-8')).hexdigest()
+        
         # Validate password
-        if user_data.get('password') != password:  # Ensure proper hashing in production
+        if user_data.get('password') != hashed_password:  # Ensure proper hashing in production
             return jsonify({'error': 'Invalid password'}), 401
 
         # Check if the account is active
         if user_data.get('active') != 1:
             return jsonify({'error': 'Account not activated yet, please activate'}), 403
 
+        payload = {
+            'email': email,
+            'uuid': user_data.get('user_id'),  # Assuming 'user_id' is the UUID
+            'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=24)  # Token expires in 24 hours
+        }
+        token = jwt.encode(payload, SECRET, algorithm='HS256')
+
         # Successful login
-        return jsonify({'message': 'Login successful', 'user': email}), 200
+        return jsonify({'message': 'Login successful', 'token': token}), 200
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
