@@ -22,6 +22,7 @@ from google.oauth2.id_token import fetch_id_token
 from together import Together
 import vertexai
 from vertexai.generative_models import GenerativeModel
+from boto3.dynamodb.conditions import Key, Attr
 
 # Ensure fallback for unsupported operations on MPS
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
@@ -131,33 +132,42 @@ def register():
 @app.route("/login", methods=["POST"])
 def login():
     """
-    API to accept email and password, and send the email to SQS.
+    API to accept email and password, validate user details from DynamoDB, 
+    and handle different cases such as non-existent user, invalid password, 
+    or inactive account.
     """
     try:
         # Parse request data
         data = request.json
         email = data.get('email')
-        password = data.get('password')  # Currently not used, but should be validated
+        password = data.get('password')
 
+        # Validate input
         if not email or not password:
             return jsonify({'error': 'Email and password are required'}), 400
-        
-        # Step 2: Store user details in DynamoDB
+
+        # Access DynamoDB table
         table = dynamodb.Table(USER_TABLE_NAME)
-        dynamodb_response = table.get_item(
-            Key={
-                'email': email
-            }
+        dynamodb_response = table.query(
+            KeyConditionExpression=Key('email').eq(email)
         )
 
-        if 'Item' in dynamodb_response:
-            user_data = dynamodb_response['Item']
-            # Process the user data as needed
-            return jsonify({'message': 'User found', 'user': user_data}), 200
-        else:
-            return jsonify({'error': 'User not found'}), 404
+        # Check if the user exists
+        if not dynamodb_response.get('Items'):
+            return jsonify({'error': 'User does not exist'}), 404
 
-        
+        user_data = dynamodb_response['Items'][0]  # Assuming email is unique
+
+        # Validate password
+        if user_data.get('password') != password:  # Ensure proper hashing in production
+            return jsonify({'error': 'Invalid password'}), 401
+
+        # Check if the account is active
+        if user_data.get('active') != 1:
+            return jsonify({'error': 'Account not activated yet, please activate'}), 403
+
+        # Successful login
+        return jsonify({'message': 'Login successful', 'user': email}), 200
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
