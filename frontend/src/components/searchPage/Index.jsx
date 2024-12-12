@@ -27,7 +27,9 @@ const DotPattern = () => (
 
 const SearchingComponent = () => {
   const [searchText, setSearchText] = useState("");
-  const [resultText, setResultText] = useState("Your summarized text will appear here...");
+  const [resultText, setResultText] = useState(
+    "Your summarized text will appear here..."
+  );
   const [dynamoData, setDynamoData] = useState([]);
 
   const handleSearch = async (e) => {
@@ -47,7 +49,7 @@ const SearchingComponent = () => {
       }
 
       const data = await response.json();
-      setResultText(data.answer || "No results found."); 
+      setResultText(data.answer || "No results found.");
       setDynamoData(data.dynamo_data.data || []); // Extract and set dynamo_data
     } catch (error) {
       setResultText(`Error: ${error.message}`);
@@ -66,7 +68,7 @@ const SearchingComponent = () => {
           <DotPattern />
 
           {/* Search and Results Section */}
-          <div className="relative z-10 flex flex-col items-center gap-6 mt-8 mx-auto w-full max-w-3xl">
+          <div className="relative flex flex-col items-center gap-6 mt-8 mx-auto w-full max-w-3xl">
             {/* Search Section */}
             <form
               onSubmit={handleSearch}
@@ -81,7 +83,8 @@ const SearchingComponent = () => {
               />
               <button
                 type="submit"
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md"
+                className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded-md"
+                disabled={searchText?.length ? false : true}
               >
                 Search
               </button>
