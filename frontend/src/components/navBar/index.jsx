@@ -1,8 +1,20 @@
 import React, { useState, useEffect } from "react";
-import { Menu, Search, Bell, User, MessageSquare, FileText } from "lucide-react";
-import { Link } from "react-router-dom";
+import {
+  Menu,
+  Search,
+  Bell,
+  User,
+  MessageSquare,
+  FileText,
+} from "lucide-react";
+import { Link } from "react-router";
 
-const NavBar = ({ toggleSidebar, onSearchClick, onNotificationsClick, onProfileClick }) => {
+const NavBar = ({
+  toggleSidebar,
+  onSearchClick,
+  onNotificationsClick,
+  onProfileClick,
+}) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({
     email: "",
