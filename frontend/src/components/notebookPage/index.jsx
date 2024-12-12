@@ -36,14 +36,14 @@ const NotebookInterface = () => {
 
   // Fetch papers from the backend
   const fetchPapers = async () => {
-    const userUUID = "user-123"; // Replace this with the actual user UUID
+    const token = localStorage.getItem("token"); // Replace this with the actual user UUID
     try {
       const response = await fetch("http://127.0.0.1:5000/getPapers", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ uuid: userUUID }), // Send the UUID in the request body
+        body: JSON.stringify({ "token": token }), // Send the UUID in the request body
       });
 
       if (!response.ok) {
