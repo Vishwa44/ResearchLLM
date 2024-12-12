@@ -57,6 +57,11 @@ const NavBar = ({
     setFormData({ ...formData, [name]: value });
   };
 
+  const logoutUser = (e) => {
+    localStorage.removeItem("token")
+    window.location.reload()
+  }
+
   const handleModelChange = (e) => {
     const newModel = e.target.value;
     setSelectedModel(newModel);
@@ -172,13 +177,21 @@ const NavBar = ({
             <MessageSquare className="inline-block w-5 h-5 mr-1" />
             Chat
           </Link>
-
-          <button
+          {localStorage.getItem("token") ?
+          (<button
+            onClick={logoutUser}
+            className="hover:bg-zinc-800 rounded p-2 text-gray-300"
+          >
+            Logout
+          </button>)
+          : 
+          (<button
             onClick={openModal}
             className="hover:bg-zinc-800 rounded p-2 text-gray-300"
           >
             Login
-          </button>
+          </button>)
+        }
         </div>
       </div>
 
