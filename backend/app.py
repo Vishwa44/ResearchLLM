@@ -649,15 +649,17 @@ def get_papers():
             return jsonify([])
         
         papers = []
-        for paper_id in paper_ids:
+        for ind, paper_id in enumerate(paper_ids):
             try:
                 paper_table = dynamodb.Table(TABLE_NAME)
-                paper_response = paper_table.get_item(Key={"paper_id": int(paper_id)})
+         
+                paper_response = paper_table.scan(FilterExpression=Attr('PaperID').eq(int(paper_id)))
+                
                 if 'Items' in paper_response:
                     papers.append({
                         "id": paper_id,
-                        "name": paper_response['Item'].get("PaperPDFName", f"Paper_{paper_id}.pdf"),
-                        "type": paper_response['Item'].get("type", "pdf"),
+                        "name": paper_response['Items'][0].get("PaperPDFName", f"Paper_{paper_id}.pdf"),
+                        "type": paper_response['Items'][0].get("type", "pdf"),
                         # "metadata": paper_response['Item'].get("metadata", {})
                     })
             except ClientError as e:
