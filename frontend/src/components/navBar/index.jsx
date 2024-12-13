@@ -2,11 +2,8 @@ import React, { useState, useEffect } from "react";
 import ReactDOM from "react-dom";
 import {
   Menu,
-  Search,
-  Bell,
-  User,
-  MessageSquare,
   FileText,
+  MessageSquare,
 } from "lucide-react";
 import { Link } from "react-router";
 import toast from "react-hot-toast";
@@ -60,16 +57,6 @@ const NavBar = ({
     setFormData({ ...formData, [name]: value });
   };
 
-  const handleFormSubmit = (e) => {
-    e.preventDefault();
-    if (formData.password !== formData.confirmPassword) {
-      toast.error("Either loginId or password is incorrect!");
-      return;
-    }
-    toast.success("Login/Register successful!");
-    closeModal();
-  };
-
   const handleModelChange = (e) => {
     const newModel = e.target.value;
     setSelectedModel(newModel);
@@ -87,12 +74,69 @@ const NavBar = ({
     };
   }
 
+  const handleLogin = async (e) => {
+    e.preventDefault();
+
+    try {
+      const response = await fetch("http://127.0.0.1:5000/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: formData.email,
+          password: formData.password,
+        }),
+      });
+
+      if (!response.ok) {
+        const { error } = await response.json();
+        throw new Error(error || "Login failed");
+      }
+
+      const data = await response.json();    
+      localStorage.setItem("token", data.token);
+      toast.success(data.message || "Login successful!");
+      closeModal();
+    } catch (error) {
+      toast.error(error.message || "An error occurred during login.");
+    }
+  };
+
+  const handleRegister = async (e) => {
+    e.preventDefault();
+
+    if (formData.password !== formData.confirmPassword) {
+      toast.error("Passwords do not match!");
+      return;
+    }
+
+    try {
+      const response = await fetch("http://127.0.0.1:5000/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: formData.email,
+          password: formData.password,
+        }),
+      });
+
+      if (!response.ok) {
+        const { error } = await response.json();
+        throw new Error(error || "Registration failed");
+      }
+
+      const data = await response.json();
+      toast.success(data.message || "Registration successful!");
+      closeModal();
+    } catch (error) {
+      toast.error(error.message || "An error occurred during registration.");
+    }
+  };
+
   return (
     <>
       <div className="h-14 flex items-center px-4 border-b border-zinc-800 bg-zinc-900">
         {/* Left Section */}
         <div className="flex items-center gap-4">
-          {/* Sidebar Toggle */}
           {toggleSidebar && (
             <button
               onClick={toggleSidebar}
@@ -101,8 +145,6 @@ const NavBar = ({
               <Menu className="w-6 h-6 text-gray-300" />
             </button>
           )}
-
-          {/* Application Title */}
           <h1 className="text-lg font-semibold text-gray-300">
             <Link to="/search" className="hover:text-gray-200 text-gray-300">
               Research Paper Summarizer
@@ -112,7 +154,6 @@ const NavBar = ({
 
         {/* Right Section */}
         <div className="ml-auto flex items-center gap-4">
-          {/* Dropdown */}
           <select
             value={selectedModel}
             onChange={handleModelChange}
@@ -132,7 +173,6 @@ const NavBar = ({
             Chat
           </Link>
 
-          {/* Login Button */}
           <button
             onClick={openModal}
             className="hover:bg-zinc-800 rounded p-2 text-gray-300"
@@ -158,12 +198,10 @@ const NavBar = ({
                 >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
-                    x="0px"
-                    y="0px"
                     width="25"
                     height="25"
                     viewBox="0 0 24 24"
-                    style={{ fill: "#FFFFFF" }}
+                    fill="#FFFFFF"
                   >
                     <path d="M 4.7070312 3.2929688 L 3.2929688 4.7070312 L 10.585938 12 L 3.2929688 19.292969 L 4.7070312 20.707031 L 12 13.414062 L 19.292969 20.707031 L 20.707031 19.292969 L 13.414062 12 L 20.707031 4.7070312 L 19.292969 3.2929688 L 12 10.585938 L 4.7070312 3.2929688 z"></path>
                   </svg>
@@ -172,7 +210,7 @@ const NavBar = ({
 
               <TabPanel value={tabId} index={0} dir={theme.direction}>
                 <form
-                  onSubmit={handleFormSubmit}
+                  onSubmit={handleLogin}
                   className="flex flex-col gap-4 mt-4"
                 >
                   <input
@@ -204,7 +242,7 @@ const NavBar = ({
 
               <TabPanel value={tabId} index={1} dir={theme.direction}>
                 <form
-                  onSubmit={handleFormSubmit}
+                  onSubmit={handleRegister}
                   className="flex flex-col gap-4 mt-4"
                 >
                   <input
