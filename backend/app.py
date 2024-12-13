@@ -25,6 +25,7 @@ from together import Together
 import vertexai
 from vertexai.generative_models import GenerativeModel
 from boto3.dynamodb.conditions import Key, Attr
+from rouge import Rouge
 
 # Ensure fallback for unsupported operations on MPS
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
@@ -443,6 +444,8 @@ def summarize():
         file = request.files['file']
         token = request.form.get("token", None)
         original_filename = file.filename
+        
+        get_eval = request.form.get('get_eval', 'false').lower() in ['true', '1', 't', 'y', 'yes']
 
         # Store in S3
         s3_link = s3_upload(file)
@@ -533,6 +536,17 @@ def summarize():
             print(e)
             
         print("generation done")
+
+        if get_eval:
+            evaluation_scores = {}
+            eval_input_text = f"\nPaper: {text}\n\nPlease give the Abstract, Introdution and the conclusion from the paper. Give those sections as is. Give plain text avoid markdown don't give any extra information out of the scope of the given paper.\n"
+            responseAPI = model.generate_content(eval_input_text)
+            labels = responseAPI.candidates[0].content.parts[0].text
+
+            rouge = Rouge()
+            rouge_scores = rouge.get_scores(response, labels, avg=True)
+            evaluation_scores['rouge'] = rouge_scores
+            return jsonify({"message": str(response), "Evalutation_metric": evaluation_scores}), 200
         return jsonify({"message": str(response)}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500

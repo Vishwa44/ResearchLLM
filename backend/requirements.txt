@@ -80,6 +80,7 @@ regex==2024.11.6
 requests==2.32.3
 requests-toolbelt==1.0.0
 rich==13.9.4
+rouge==1.0.1
 rsa==4.9
 s3transfer==0.10.4
 safetensors==0.4.5
