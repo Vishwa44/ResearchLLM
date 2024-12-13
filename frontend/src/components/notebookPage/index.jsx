@@ -201,6 +201,10 @@ const NotebookInterface = () => {
             span.ant-select-selection-placeholder{
               color: white !important;
             }
+            .ReactModal__Content{
+              max-height:60%;
+              overflow-y: scroll;
+            }
         `}
       </style>
       <div className="flex h-screen bg-zinc-900 text-gray-300">
@@ -355,7 +359,7 @@ const NotebookInterface = () => {
           >
             <h2 className="text-lg font-semibold mb-4">Summary</h2>
             <p className="mb-4">
-              {searchResult}
+              {localStorage.getItem("summary")}
             </p>
             <button
               onClick={closeModal}
