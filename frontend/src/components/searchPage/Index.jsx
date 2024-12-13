@@ -31,24 +31,27 @@ const SearchingComponent = () => {
     "Your summarized text will appear here..."
   );
   const [dynamoData, setDynamoData] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleSearch = async (e) => {
     e.preventDefault();
-
+    setIsLoading(true);
     try {
-      const selectedModel=localStorage.getItem("selectedModel")
+      const selectedModel = localStorage.getItem("selectedModel");
       const payload = {
-       
         query: searchText,
         model: selectedModel, // Use the selected model
       };
-      const response = await fetch("https://research-llm-backend-316797979759.us-east4.run.app/query", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
+      const response = await fetch(
+        "https://research-llm-backend-316797979759.us-east4.run.app/query",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        }
+      );
 
       if (!response.ok) {
         throw new Error("Failed to fetch results. Please try again.");
@@ -57,8 +60,10 @@ const SearchingComponent = () => {
       const data = await response.json();
       setResultText(data.answer || "No results found.");
       setDynamoData(data.dynamo_data || []); // Extract and set dynamo_data
+      setIsLoading(false);
     } catch (error) {
       setResultText(`Error: ${error.message}`);
+      setIsLoading(false);
     }
   };
 
@@ -69,7 +74,7 @@ const SearchingComponent = () => {
         <NavBar />
 
         {/* Content Area */}
-        <div className="flex-1 relative p-6">
+        <div className="flex-1 relative p-6" style={{ background: "#18181b" }}>
           {/* Dot Pattern */}
           <DotPattern />
 
@@ -92,7 +97,7 @@ const SearchingComponent = () => {
                 className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded-md"
                 disabled={searchText?.length ? false : true}
               >
-                Search
+                {isLoading ? "Loading" : "Search"}
               </button>
             </form>
 

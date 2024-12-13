@@ -5,7 +5,6 @@ import toast from "react-hot-toast";
 import { ProChat } from "@ant-design/pro-chat";
 import Modal from "react-modal";
 
-
 const DotPattern = () => (
   <svg className="absolute w-full h-full" xmlns="http://www.w3.org/2000/svg">
     <defs>
@@ -42,13 +41,16 @@ const NotebookInterface = () => {
   const fetchPapers = async () => {
     const token = localStorage.getItem("token"); // Replace this with the actual user UUID
     try {
-      const response = await fetch("https://research-llm-backend-316797979759.us-east4.run.app/getPapers", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ "token": token }), // Send the UUID in the request body
-      });
+      const response = await fetch(
+        "https://research-llm-backend-316797979759.us-east4.run.app/getPapers",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ token: token }), // Send the UUID in the request body
+        }
+      );
 
       if (!response.ok) {
         throw new Error("Failed to fetch papers");
@@ -86,10 +88,13 @@ const NotebookInterface = () => {
       }
 
       // Replace this with your file upload API endpoint
-      const response = await fetch("https://research-llm-backend-316797979759.us-east4.run.app/summarize", {
-        method: "POST",
-        body: formData,
-      });
+      const response = await fetch(
+        "https://research-llm-backend-316797979759.us-east4.run.app/summarize",
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
 
       if (!response.ok) {
         throw new Error("File upload failed");
@@ -113,7 +118,7 @@ const NotebookInterface = () => {
     }
   };
 
-  const handleSummary = async (e) => { };
+  const handleSummary = async (e) => {};
 
   const handleSearch = async (message) => {
     // e.preventDefault();
@@ -137,13 +142,16 @@ const NotebookInterface = () => {
         model: selectedModel, // Use the selected model
       };
 
-      const response = await fetch("https://research-llm-backend-316797979759.us-east4.run.app/query", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
+      const response = await fetch(
+        "https://research-llm-backend-316797979759.us-east4.run.app/query",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        }
+      );
 
       if (!response.ok) {
         throw new Error("Failed to fetch results. Please try again.");
@@ -153,12 +161,11 @@ const NotebookInterface = () => {
       toast.success("Query fetched successfully!");
       setSearchText("");
       // setResultText(data.summary || "No summary available.");
-      return data.answer
+      return data.answer;
     } catch (error) {
       toast.error(`Error: ${error.message}`);
     }
   };
-
 
   const openModal = () => setIsModalOpen(true);
   const closeModal = () => setIsModalOpen(false);
@@ -269,10 +276,11 @@ const NotebookInterface = () => {
                     <div
                       className={`
                     w-4 h-4 rounded-full border
-                    ${selectedSourceId === source.id
-                          ? "border-blue-500 bg-blue-500"
-                          : "border-zinc-600"
-                        }
+                    ${
+                      selectedSourceId === source.id
+                        ? "border-blue-500 bg-blue-500"
+                        : "border-zinc-600"
+                    }
                     transition-colors duration-200
                   `}
                     >
@@ -301,14 +309,20 @@ const NotebookInterface = () => {
         {/* Main Content */}
         <div className="flex-1 flex flex-col">
           <NavBar />
-          <div style={{display: "flex", justifyContent: "center", marginTop: "10px"}}>
-          <button
-            style={{width:"30vw"}}
-            onClick={openModal}
-            className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              marginTop: "10px",
+            }}
           >
-            Summary
-          </button>
+            <button
+              style={{ width: "30vw" }}
+              onClick={openModal}
+              className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+            >
+              Summary
+            </button>
           </div>
           <Modal
             isOpen={isModalOpen}
@@ -318,9 +332,7 @@ const NotebookInterface = () => {
             overlayClassName="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center"
           >
             <h2 className="text-lg font-semibold mb-4">Summary</h2>
-            <p className="mb-4">
-              {localStorage.getItem("summary")}
-            </p>
+            <p className="mb-4">{localStorage.getItem("summary")}</p>
             <button
               onClick={closeModal}
               className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
@@ -331,10 +343,10 @@ const NotebookInterface = () => {
           <ProChat
             className="h-50"
             locale="en-US"
-            helloMessage={<div>{searchResult}</div>}
+            helloMessage={<div style={{ color: "white" }}>{searchResult}</div>}
             request={async (messages) => {
-              const text = await handleSearch(messages);  
-              console.log("ANSWER:", text)
+              const text = await handleSearch(messages);
+              console.log("ANSWER:", text);
 
               return new Response(text);
             }}
