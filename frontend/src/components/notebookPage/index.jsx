@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Menu, FileText } from "lucide-react";
 import NavBar from "../navbar";
 import toast from "react-hot-toast";
+import { ProChat } from "@ant-design/pro-chat";
 
 const DotPattern = () => (
   <svg className="absolute w-full h-full" xmlns="http://www.w3.org/2000/svg">
@@ -97,12 +98,15 @@ const NotebookInterface = () => {
       setSources([...sources, newSource]);
       setSearchText("");
       setResultText(data.message || "No summary available.");
+      localStorage.setItem("summary", data.message);
       toast.success("File uploaded successfully!");
     } catch (error) {
       console.error("Upload error:", error);
       toast.error(`Error: ${error.message}`);
     }
   };
+
+  const handleSummary = async (e) => {};
 
   const handleSearch = async (e) => {
     e.preventDefault();
@@ -148,66 +152,106 @@ const NotebookInterface = () => {
   };
 
   return (
-    <div className="flex h-screen bg-zinc-900 text-gray-300">
-      {/* Sidebar */}
-      <div
-        className={`
+    <>
+      <style type="text/css">
+        {`
+            .css-dev-only-do-not-override-142vneq, .ant-app{
+                height: auto;
+                max-height: 100vh;
+                width: 100%;
+                overflow-y: auto;
+                position: relative;
+                box-sizing: border-box;
+            }
+            
+            .ant-pro-chat-chat-list-container{
+                height: 700px !important;
+            }
+            .ant-pro-chat-input-area{
+                background: #18181b;
+                padding-top: 0px;
+            }
+            .anticon{
+                color: white;
+            }
+            p{
+              color: white !important;
+            }        
+            .ant-pro-chat-list-item-message-content{
+              background-color: #4b4c4c;
+            }
+            .ant-input, .ant-input:focus, .ant-input:hover{
+              color: white;
+              background: #4b4c4c;
+            }
+            .ant-select-selection__placeholder{
+              color : white;
+            }
+            span.ant-select-selection-placeholder{
+              color: white !important;
+            }
+        `}
+      </style>
+      <div className="flex h-screen bg-zinc-900 text-gray-300">
+        {/* Sidebar */}
+        <div
+          className={`
           ${isSidebarOpen ? "w-64" : "w-16"} 
           flex-shrink-0 transition-all duration-300 ease-in-out 
           border-r border-zinc-800 flex flex-col bg-zinc-900
         `}
-      >
-        <div className="h-14 flex items-center px-4 border-b border-zinc-800">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={toggleSidebar}
-              className="hover:bg-zinc-800 rounded p-1"
-            >
-              <Menu className="w-6 h-6" />
-            </button>
-          </div>
-        </div>
-
-        {isSidebarOpen ? (
-          <div
-            className="p-4 border-b border-zinc-800"
-            style={{ borderBottom: "none" }}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 flex items-center justify-center rounded-full border border-zinc-700">
-                  {sources.length}
-                </div>
-                <span>Sources</span>
-              </div>
-              <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-zinc-800 border border-zinc-700">
-                <label htmlFor="file-upload" className="text-lg">
-                  +
-                </label>
-                <input
-                  id="file-upload"
-                  type="file"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
+        >
+          <div className="h-14 flex items-center px-4 border-b border-zinc-800">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={toggleSidebar}
+                className="hover:bg-zinc-800 rounded p-1"
+              >
+                <Menu className="w-6 h-6" />
               </button>
             </div>
+          </div>
 
-            {sources.map((source) => (
-              <div
-                key={source.id}
-                className="flex items-center justify-between py-2 px-3 text-sm hover:bg-zinc-800/50 rounded cursor-pointer"
-                onClick={() => selectSource(source.id)}
-                role="radio"
-                aria-checked={selectedSourceId === source.id}
-              >
+          {isSidebarOpen ? (
+            <div
+              className="p-4 border-b border-zinc-800"
+              style={{ borderBottom: "none" }}
+            >
+              <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-red-500" />
-                  <span>{source.name}</span>
+                  <div className="w-6 h-6 flex items-center justify-center rounded-full border border-zinc-700">
+                    {sources.length}
+                  </div>
+                  <span>Sources</span>
                 </div>
-                <div className="relative flex items-center">
-                  <div
-                    className={`
+                <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-zinc-800 border border-zinc-700">
+                  <label htmlFor="file-upload" className="text-lg">
+                    +
+                  </label>
+                  <input
+                    id="file-upload"
+                    type="file"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
+                </button>
+              </div>
+
+              {sources.map((source) => (
+                <div
+                  key={source.id}
+                  className="flex items-center justify-between py-2 px-3 text-sm hover:bg-zinc-800/50 rounded cursor-pointer"
+                  onClick={() => selectSource(source.id)}
+                  role="radio"
+                  aria-checked={selectedSourceId === source.id}
+                >
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-red-500" />
+                    <span>{source.name}</span>
+                  </div>
+                  <div className="relative flex items-center">
+                    <div
+                      className={`
                     w-4 h-4 rounded-full border
                     ${
                       selectedSourceId === source.id
@@ -216,33 +260,33 @@ const NotebookInterface = () => {
                     }
                     transition-colors duration-200
                   `}
-                  >
-                    {selectedSourceId === source.id && (
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="w-1.5 h-1.5 bg-white rounded-full"></div>
-                      </div>
-                    )}
+                    >
+                      {selectedSourceId === source.id && (
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <div className="w-1.5 h-1.5 bg-white rounded-full"></div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="flex flex-col items-center pt-4 gap-4">
-            <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-zinc-800 border border-zinc-700">
-              <span className="text-lg">+</span>
-            </button>
-            <div className="w-6 h-6 flex items-center justify-center rounded-full border border-zinc-700 text-sm">
-              {sources.length}
+              ))}
             </div>
-          </div>
-        )}
-      </div>
+          ) : (
+            <div className="flex flex-col items-center pt-4 gap-4">
+              <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-zinc-800 border border-zinc-700">
+                <span className="text-lg">+</span>
+              </button>
+              <div className="w-6 h-6 flex items-center justify-center rounded-full border border-zinc-700 text-sm">
+                {sources.length}
+              </div>
+            </div>
+          )}
+        </div>
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col">
-        <NavBar />
-        <div className="flex-1 relative flex items-center justify-center">
+        {/* Main Content */}
+        <div className="flex-1 flex flex-col">
+          <NavBar />
+          {/* <div className="flex-1 relative flex items-center justify-center">
           <DotPattern />
           <div className="relative text-zinc-500">
             {sources.length === 0 ? (
@@ -285,9 +329,23 @@ const NotebookInterface = () => {
               </button>
             </div>
           </div>
+        </div> */}
+          <ProChat
+            className="h-50"
+            locale="en-US"
+            helloMessage={<div>{searchResult}</div>}
+            request={async (messages) => {
+              const text = await delay(
+                `这是一条模拟非流式输出的消息的消息。本次会话传入了${messages.length}条消息`
+              );
+
+              return new Response(text);
+            }}
+            style={{ height: "100vh" }}
+          />
         </div>
       </div>
-    </div>
+    </>
   );
 };
 
