@@ -389,7 +389,7 @@ def query():
         
         answer = generate_answer(query_text, matches[:3], model_type)
         if model_type == "llama3.2":
-            answer = json.loads(answer.text)
+            answer = json.loads(answer)
             return jsonify({"result": str(matches), "dynamo_data": dynamo_response, "answer": answer['response']})
         return jsonify({"result": str(matches), "dynamo_data": dynamo_response, "answer": answer})
     except Exception as e:
