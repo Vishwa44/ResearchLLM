@@ -47,14 +47,6 @@ SECRET="A VERY SECURE SECRET"
 
 
 
-# Initialize DynamoDB Resource
-dynamodb = boto3.resource(
-    'dynamodb',
-    aws_access_key_id=AWS_ACCESS_KEY_ID,
-    aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
-    region_name=AWS_REGION
-)
-
 # Initialize DynamoDB client for user DB
 dynamodb = boto3.resource(
     'dynamodb',
@@ -450,6 +442,7 @@ def summarize():
             return jsonify({"error": "No file uploaded"}), 400
 
         file = request.files['file']
+        token = request.form.get("token", None)
         original_filename = file.filename
         
         get_eval = request.form.get('get_eval', 'false').lower() in ['true', '1', 't', 'y', 'yes']
@@ -478,7 +471,7 @@ def summarize():
             temp_dict = {}
             temp_dict["id"] = "paper_" + str(new_paper_id) + "#chunk_" + str(i)
             temp_dict["values"] = embeddings[i]                
-            temp_dict["metadata"] = {"paper_id": new_paper_id, "chunk_id": "chunk_" + str(i), "chunk": chunks[i]}
+            temp_dict["metadata"] = {"paper_id": "paper_"+str(new_paper_id), "chunk_id": "chunk_" + str(i), "chunk": chunks[i]}
             pinecone_chunks.append(temp_dict)
 
         batch_upsert(index, pinecone_chunks)
@@ -493,11 +486,47 @@ def summarize():
 
         table.put_item(Item=data_to_add)
 
-        input_text = f"\nPaper: {text}\n\nProvide a detailed summary based on the given paper, Give plain text avoid markdown don't give any extra information out of the scope of the given paper.\n"
+        if token:
+            userTable = dynamodb.Table(USER_TABLE_NAME)
+            decoded_payload = jwt.decode(token, SECRET, algorithms=["HS256"])
+            user_uuid = decoded_payload.get('uuid')
+            email = decoded_payload.get("email")
+
+            try:
+                # Update paperId by appending this to user from user table based on uuid
+                response = userTable.get_item(Key={'email': email, 'user_id': user_uuid})
+                if 'Item' not in response:
+                    return {"error": "User not found"}, 404
+
+                user_item = response['Item']
+
+                # Append the new paper ID to the paper_id list
+                existing_papers = user_item.get('paper_id', [])
+                if not isinstance(existing_papers, list):
+                    return {"error": "Invalid paper_id field. Expected a list."}, 400
+                
+                if new_paper_id in existing_papers:
+                    return {"message": "Paper ID already exists in the user's list"}, 200
+                
+                updated_papers = existing_papers + [int(new_paper_id)]
+
+                # Update the record in DynamoDB
+                userTable.update_item(
+                    Key={'email': email,  'user_id': user_uuid},
+                    UpdateExpression="SET paper_id = :new_paper_list",
+                    ExpressionAttributeValues={':new_paper_list': updated_papers},
+                    ReturnValues="UPDATED_NEW"
+                )
+            except Exception as e:
+                print("Error: ", e)
+
+        query = "Summarize the content clearly and concisely with a maximum word limit of 300 words."
 
         vertexai.init(project=GCP_PROJECT_ID, location="us-central1")
         model = GenerativeModel("gemini-1.5-flash-002")
         
+        input_text = f"\nPaper: {text}\n\nProvide a detailed summary based on the given paper, Give plain text avoid markdown don't give any extra information out of the scope of the given paper.\n"
+
         print("generating answer")
         try:
             print("test")
@@ -505,7 +534,7 @@ def summarize():
             response = responseAPI.candidates[0].content.parts[0].text
         except Exception as e:
             print(e)
-
+            
         print("generation done")
 
         if get_eval:
