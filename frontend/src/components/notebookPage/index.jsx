@@ -42,7 +42,7 @@ const NotebookInterface = () => {
   const fetchPapers = async () => {
     const token = localStorage.getItem("token"); // Replace this with the actual user UUID
     try {
-      const response = await fetch("http://127.0.0.1:5000/getPapers", {
+      const response = await fetch("https://research-llm-backend-316797979759.us-east4.run.app/getPapers", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -86,7 +86,7 @@ const NotebookInterface = () => {
       }
 
       // Replace this with your file upload API endpoint
-      const response = await fetch("http://127.0.0.1:5000/summarize", {
+      const response = await fetch("https://research-llm-backend-316797979759.us-east4.run.app/summarize", {
         method: "POST",
         body: formData,
       });
@@ -115,8 +115,8 @@ const NotebookInterface = () => {
 
   const handleSummary = async (e) => { };
 
-  const handleSearch = async (e) => {
-    e.preventDefault();
+  const handleSearch = async (message) => {
+    // e.preventDefault();
 
     const selectedSource = sources.find(
       (source) => source.id === selectedSourceId
@@ -133,11 +133,11 @@ const NotebookInterface = () => {
     try {
       const payload = {
         file_id: selectedSource.id, // Use the file ID
-        query: searchText,
+        query: message[message.length - 1]["message"],
         model: selectedModel, // Use the selected model
       };
 
-      const response = await fetch("http://127.0.0.1:5000/query", {
+      const response = await fetch("https://research-llm-backend-316797979759.us-east4.run.app/query", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -152,7 +152,8 @@ const NotebookInterface = () => {
       const data = await response.json();
       toast.success("Query fetched successfully!");
       setSearchText("");
-      setResultText(data.summary || "No summary available.");
+      // setResultText(data.summary || "No summary available.");
+      return data.answer
     } catch (error) {
       toast.error(`Error: ${error.message}`);
     }
@@ -300,56 +301,15 @@ const NotebookInterface = () => {
         {/* Main Content */}
         <div className="flex-1 flex flex-col">
           <NavBar />
-          {/* <div className="flex-1 relative flex items-center justify-center">
-          <DotPattern />
-          <div className="relative text-zinc-500">
-            {sources.length === 0 ? (
-              "Add source to search"
-            ) : searchResult.length > 0 ? (
-              <div>{searchResult}</div>
-            ) : (
-              "Add prompt to search through the selected source"
-            )}
-          </div>
-        </div>
-        <div className="p-4 border-t border-zinc-800">
-          <div className="max-w-4xl mx-auto">
-            <div className="relative">
-              <input
-                type="text"
-                value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
-                placeholder="Start typing..."
-                className="w-full bg-zinc-800 rounded-lg pl-4 pr-12 py-3 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
-              <button
-                onClick={handleSearch}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-md bg-blue-500 hover:bg-blue-600"
-                disabled={searchText?.length ? false : true}
-              >
-                <svg
-                  className="w-4 h-4 rotate-90"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
-                  />
-                </svg>
-              </button>
-            </div>
-          </div>
-        </div> */}
+          <div style={{display: "flex", justifyContent: "center", marginTop: "10px"}}>
           <button
+            style={{width:"30vw"}}
             onClick={openModal}
             className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
           >
             Summary
           </button>
+          </div>
           <Modal
             isOpen={isModalOpen}
             onRequestClose={closeModal}
@@ -373,9 +333,8 @@ const NotebookInterface = () => {
             locale="en-US"
             helloMessage={<div>{searchResult}</div>}
             request={async (messages) => {
-              const text = await delay(
-                `这是一条模拟非流式输出的消息的消息。本次会话传入了${messages.length}条消息`
-              );
+              const text = await handleSearch(messages);  
+              console.log("ANSWER:", text)
 
               return new Response(text);
             }}

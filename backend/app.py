@@ -43,6 +43,7 @@ TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
 GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID")
 SALT = "A VERY STRONG SALT"
 SECRET="A VERY SECURE SECRET"
+USER_TABLE_NAME = 'research_user_table'
 
 
 
@@ -67,7 +68,6 @@ sqs = boto3.client(
 QUEUE_URL = 'https://sqs.us-west-2.amazonaws.com/992382724291/UserEmailQueue'
 
 
-USER_TABLE_NAME = 'research_user_table'
 
 
 pc = Pinecone(api_key=PINECONE_KEY)
@@ -389,7 +389,7 @@ def query():
         
         answer = generate_answer(query_text, matches[:3], model_type)
         if model_type == "llama3.2":
-            answer = json.loads(answer)
+            answer = json.loads(answer.text)
             return jsonify({"result": str(matches), "dynamo_data": dynamo_response, "answer": answer['response']})
         return jsonify({"result": str(matches), "dynamo_data": dynamo_response, "answer": answer})
     except Exception as e:
@@ -521,6 +521,17 @@ def summarize():
                 print("Error: ", e)
 
         query = "Summarize the content clearly and concisely with a maximum word limit of 300 words."
+
+        # responseAPI = client.chat.completions.create(
+        # model="meta-llama/Llama-3.3-70B-Instruct-Turbo",
+        # messages=[
+        #         {"role": "system", "content": "You are a helpful assistant for the conducting research that answers questions based on provided context. Don't mention anything about the context when answering"},
+        #         {"role": "user", "content": text}
+        #     ],
+        # stream=False)
+        # print("generating answer")
+        # response = responseAPI.choices[0].message.content
+        # print("generation done")
 
         vertexai.init(project=GCP_PROJECT_ID, location="us-central1")
         model = GenerativeModel("gemini-1.5-flash-002")
