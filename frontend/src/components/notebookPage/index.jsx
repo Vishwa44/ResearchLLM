@@ -76,6 +76,10 @@ const NotebookInterface = () => {
     try {
       const formData = new FormData();
       formData.append("file", file);
+      const token = localStorage.getItem("token"); // Adjust the key based on where your token is stored
+      if (token) {
+        formData.append("token", token);
+      }
 
       // Replace this with your file upload API endpoint
       const response = await fetch("http://127.0.0.1:5000/summarize", {
