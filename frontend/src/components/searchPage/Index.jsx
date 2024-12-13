@@ -42,7 +42,7 @@ const SearchingComponent = () => {
         query: searchText,
         model: selectedModel, // Use the selected model
       };
-      const response = await fetch("http://127.0.0.1:5000/query", {
+      const response = await fetch("https://research-llm-backend-316797979759.us-east4.run.app/query", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
