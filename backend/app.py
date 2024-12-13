@@ -490,26 +490,21 @@ def summarize():
 
         table.put_item(Item=data_to_add)
 
-        query = "Summarize the content clearly and concisely with a maximum word limit of 300 words."
+        input_text = f"\nPaper: {text}\n\nProvide a detailed summary based on the given paper, Give plain text avoid markdown don't give any extra information out of the scope of the given paper.\n"
 
-        input_text = f"Query: {query}\nContext: {text}\n\nProvide a detailed summary based on the context.\n"
-
-        headers = {
-        "Authorization": "Bearer "+ TOKEN, 
-        "Content-Type": "application/json"}
-        data = {
-            "model": "llama3.2:3b",
-            "prompt": input_text,
-            "stream": False}
+        vertexai.init(project=GCP_PROJECT_ID, location="us-central1")
+        model = GenerativeModel("gemini-1.5-flash-002")
+        
         print("generating answer")
         try:
             print("test")
-            response = requests.post(LLAMA_URL, json=data, headers=headers)
+            responseAPI = model.generate_content(input_text)
+            response = responseAPI.candidates[0].content.parts[0].text
         except Exception as e:
             print(e)
 
         print("generation done")
-        return jsonify({"message": str(response.json())}), 200
+        return jsonify({"message": str(response)}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
