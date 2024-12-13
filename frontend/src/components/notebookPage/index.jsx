@@ -3,6 +3,8 @@ import { Menu, FileText } from "lucide-react";
 import NavBar from "../navbar";
 import toast from "react-hot-toast";
 import { ProChat } from "@ant-design/pro-chat";
+import Modal from "react-modal";
+
 
 const DotPattern = () => (
   <svg className="absolute w-full h-full" xmlns="http://www.w3.org/2000/svg">
@@ -34,6 +36,7 @@ const NotebookInterface = () => {
   const [selectedSourceId, setSelectedSourceId] = useState(null);
   const [searchText, setSearchText] = useState("");
   const [searchResult, setResultText] = useState("");
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Fetch papers from the backend
   const fetchPapers = async () => {
@@ -106,7 +109,7 @@ const NotebookInterface = () => {
     }
   };
 
-  const handleSummary = async (e) => {};
+  const handleSummary = async (e) => { };
 
   const handleSearch = async (e) => {
     e.preventDefault();
@@ -150,6 +153,10 @@ const NotebookInterface = () => {
       toast.error(`Error: ${error.message}`);
     }
   };
+
+
+  const openModal = () => setIsModalOpen(true);
+  const closeModal = () => setIsModalOpen(false);
 
   return (
     <>
@@ -253,11 +260,10 @@ const NotebookInterface = () => {
                     <div
                       className={`
                     w-4 h-4 rounded-full border
-                    ${
-                      selectedSourceId === source.id
-                        ? "border-blue-500 bg-blue-500"
-                        : "border-zinc-600"
-                    }
+                    ${selectedSourceId === source.id
+                          ? "border-blue-500 bg-blue-500"
+                          : "border-zinc-600"
+                        }
                     transition-colors duration-200
                   `}
                     >
@@ -330,6 +336,30 @@ const NotebookInterface = () => {
             </div>
           </div>
         </div> */}
+          <button
+            onClick={openModal}
+            className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+          >
+            Summary
+          </button>
+          <Modal
+            isOpen={isModalOpen}
+            onRequestClose={closeModal}
+            contentLabel="Example Modal"
+            className="bg-zinc-800 text-gray-300 p-6 rounded-md shadow-lg max-w-lg mx-auto mt-20"
+            overlayClassName="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center"
+          >
+            <h2 className="text-lg font-semibold mb-4">Summary</h2>
+            <p className="mb-4">
+              {searchResult}
+            </p>
+            <button
+              onClick={closeModal}
+              className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+            >
+              Close
+            </button>
+          </Modal>
           <ProChat
             className="h-50"
             locale="en-US"
