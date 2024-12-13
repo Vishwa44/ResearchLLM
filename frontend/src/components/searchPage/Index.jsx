@@ -36,12 +36,18 @@ const SearchingComponent = () => {
     e.preventDefault();
 
     try {
+      const selectedModel=localStorage.getItem("selectedModel")
+      const payload = {
+       
+        query: searchText,
+        model: selectedModel, // Use the selected model
+      };
       const response = await fetch("http://127.0.0.1:5000/query", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ query: searchText }),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -50,7 +56,7 @@ const SearchingComponent = () => {
 
       const data = await response.json();
       setResultText(data.answer || "No results found.");
-      setDynamoData(data.dynamo_data.data || []); // Extract and set dynamo_data
+      setDynamoData(data.dynamo_data || []); // Extract and set dynamo_data
     } catch (error) {
       setResultText(`Error: ${error.message}`);
     }
