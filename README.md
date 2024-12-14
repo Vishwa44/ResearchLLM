@@ -33,7 +33,7 @@ This has the raw pdfs as well as the parsed text files.
 - Gemini1.5: A hosted model that we used from VertexAI
 
 # Application Video
-https://youtu.be/yW0pSb-ZgJU
+[https://youtu.be/qambwG9ZCnY](https://youtu.be/qambwG9ZCnY)
 
 # Application Screenshots: 
 
