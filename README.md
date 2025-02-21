@@ -23,7 +23,7 @@ This has the raw pdfs as well as the parsed text files.
 
 # Databases
 - Pinecone: This is our vector database in this app. It holds indexes for 3 chunk sizes: 2500, 4000 and 8000.
-- Embedding Model: OpenAI's text-embedding-3-small with 1536 dimensions
+- Embedding Model: OpenAI's text-embedding-3-small with 1536 dimensions.
 - DynamoDB: We used DynamoDB to hold our User Data (inclduding the papers they have uploaded) as well as our Research Paper metadata such as the S3 link and the pdf name.   
 
 
